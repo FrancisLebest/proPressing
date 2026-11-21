@@ -1,0 +1,258 @@
+{
+  "entities": {
+    "CompanyConfig": {
+      "title": "CompanyConfig",
+      "description": "Configuration multi-tenant de l'entreprise pressing (Setup 10 étapes, identité, GPS, délais, paiements, reçu, abonnement SaaS).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID Firebase de l'administrateur propriétaire." },
+        "companyName": { "type": "string" },
+        "legalName": { "type": "string" },
+        "rccm": { "type": "string" },
+        "nif": { "type": "string" },
+        "description": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "email": { "type": "string" },
+        "country": { "type": "string" },
+        "city": { "type": "string" },
+        "commune": { "type": "string" },
+        "address": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "currency": { "type": "string" },
+        "taxRatePercent": { "type": "number" },
+        "openingHours": { "type": "string" },
+        "standardDelayHours": { "type": "integer" },
+        "expressDelayHours": { "type": "integer" },
+        "expressSurchargePercent": { "type": "number" },
+        "orderPrefix": { "type": "string" },
+        "receiptFooter": { "type": "string" },
+        "receiptFormat": { "type": "string", "enum": ["THERMAL_58", "THERMAL_80", "A4_PDF"] },
+        "acceptedPayments": { "type": "array" },
+        "agencies": { "type": "array" },
+        "smsNotificationsEnabled": { "type": "boolean" },
+        "whatsappNotificationsEnabled": { "type": "boolean" },
+        "subscriptionPlan": { "type": "string", "enum": ["STARTER", "BUSINESS", "ENTERPRISE"] },
+        "subscriptionBilling": { "type": "string", "enum": ["MONTHLY", "QUARTERLY", "ANNUAL"] },
+        "subscriptionStatus": { "type": "string", "enum": ["TRIAL", "ACTIVE", "GRACE", "SUSPENDED"] },
+        "setupStep": { "type": "integer" },
+        "setupCompleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "FieldValue.serverTimestamp()" }
+      },
+      "required": [
+        "userId", "companyName", "currency", "orderPrefix", "receiptFormat",
+        "subscriptionPlan", "subscriptionBilling", "subscriptionStatus",
+        "setupStep", "setupCompleted", "createdAt", "updatedAt"
+      ]
+    },
+    "ServiceItem": {
+      "title": "ServiceItem",
+      "description": "Article et prestation de pressing avec tarification, délai et disponibilité commerciale.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "treatmentType": { "type": "string" },
+        "billingUnit": { "type": "string", "enum": ["PIECE", "KG", "SQM"] },
+        "unitPrice": { "type": "integer" },
+        "expressPrice": { "type": "integer" },
+        "delayHours": { "type": "integer" },
+        "available": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "category", "treatmentType", "billingUnit", "unitPrice", "expressPrice", "delayHours", "available", "createdAt", "updatedAt"]
+    },
+    "ClientRecord": {
+      "title": "ClientRecord",
+      "description": "Fiche client pressing (particulier, VIP, entreprise, hôtel, restaurant) avec GPS, fidélité et solde.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "email": { "type": "string" },
+        "category": { "type": "string", "enum": ["PARTICULIER", "VIP", "ENTREPRISE", "HOTEL", "RESTAURANT"] },
+        "address": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "loyaltyPoints": { "type": "integer" },
+        "discountPercent": { "type": "number" },
+        "creditLimit": { "type": "integer" },
+        "balanceDue": { "type": "integer" },
+        "preferences": { "type": "string" },
+        "notes": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fullName", "phone", "category", "loyaltyPoints", "discountPercent", "creditLimit", "balanceDue", "active", "createdAt", "updatedAt"]
+    },
+    "PressingOrder": {
+      "title": "PressingOrder",
+      "description": "Commande de pressing avec articles, photos vêtements, diagnostic IA, workflow atelier, paiement et livraison.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientPhone": { "type": "string" },
+        "clientAddress": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "ACCEPTED", "WASHING", "DRYING", "IRONING", "FINISHING", "QUALITY_CHECK", "READY", "PICKED_UP", "DELIVERED", "CANCELLED"]
+        },
+        "priority": { "type": "string", "enum": ["ECONOMY", "STANDARD", "EXPRESS"] },
+        "items": { "type": "array" },
+        "itemCount": { "type": "integer" },
+        "subtotal": { "type": "integer" },
+        "discountAmount": { "type": "integer" },
+        "expressFee": { "type": "integer" },
+        "deliveryFee": { "type": "integer" },
+        "taxAmount": { "type": "integer" },
+        "totalAmount": { "type": "integer" },
+        "paidAmount": { "type": "integer" },
+        "remainingAmount": { "type": "integer" },
+        "paymentStatus": { "type": "string", "enum": ["UNPAID", "PARTIAL", "PAID"] },
+        "paymentMethod": { "type": "string", "enum": ["ESPECES", "ORANGE_MONEY", "MTN_MOMO", "WAVE", "MOOV_MONEY", "CARTE", "VIREMENT"] },
+        "deliveryRequested": { "type": "boolean" },
+        "deliveryDriver": { "type": "string" },
+        "deliveryZone": { "type": "string" },
+        "assignedEmployee": { "type": "string" },
+        "qualityChecked": { "type": "boolean" },
+        "clientSignatureName": { "type": "string" },
+        "observations": { "type": "string" },
+        "dueDateMillis": { "type": "integer" },
+        "statusHistory": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "orderNumber", "clientName", "status", "priority", "items",
+        "itemCount", "subtotal", "discountAmount", "expressFee", "deliveryFee",
+        "taxAmount", "totalAmount", "paidAmount", "remainingAmount",
+        "paymentStatus", "paymentMethod", "deliveryRequested", "qualityChecked",
+        "dueDateMillis", "statusHistory", "createdAt", "updatedAt"
+      ]
+    },
+    "AccountingEntry": {
+      "title": "AccountingEntry",
+      "description": "Écriture de caisse et comptabilité SYSCOHADA (immuable, sans suppression silencieuse).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "reference": { "type": "string" },
+        "entryType": { "type": "string", "enum": ["REVENUE", "EXPENSE", "CASH_OPEN", "CASH_CLOSE", "REFUND"] },
+        "category": { "type": "string" },
+        "syscohadaAccount": { "type": "string" },
+        "label": { "type": "string" },
+        "amount": { "type": "integer" },
+        "paymentMethod": { "type": "string", "enum": ["ESPECES", "ORANGE_MONEY", "MTN_MOMO", "WAVE", "MOOV_MONEY", "CARTE", "VIREMENT"] },
+        "orderId": { "type": "string" },
+        "counterparty": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "reference", "entryType", "category", "syscohadaAccount", "label", "amount", "paymentMethod", "createdAt", "updatedAt"]
+    },
+    "StockItem": {
+      "title": "StockItem",
+      "description": "Consommable pressing (lessive, détergent, cintres, emballages) ou machine industrielle.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "itemKind": { "type": "string", "enum": ["CONSUMABLE", "MACHINE"] },
+        "category": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "minThreshold": { "type": "integer" },
+        "unit": { "type": "string" },
+        "unitCost": { "type": "integer" },
+        "supplierName": { "type": "string" },
+        "machineStatus": { "type": "string", "enum": ["OPERATIONAL", "MAINTENANCE", "BREAKDOWN"] },
+        "maintenanceNotes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "itemKind", "category", "quantity", "minThreshold", "unit", "unitCost", "machineStatus", "createdAt", "updatedAt"]
+    },
+    "EmployeeRecord": {
+      "title": "EmployeeRecord",
+      "description": "Employé du pressing avec rôle, agence, salaire, commission et présence.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["DIRECTEUR", "CAISSIER", "OPERATEUR", "CONTROLE_QUALITE", "LIVREUR"] },
+        "agencyName": { "type": "string" },
+        "monthlySalary": { "type": "integer" },
+        "commissionRate": { "type": "number" },
+        "presentToday": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fullName", "role", "monthlySalary", "commissionRate", "presentToday", "active", "createdAt", "updatedAt"]
+    },
+    "ClaimRecord": {
+      "title": "ClaimRecord",
+      "description": "Réclamation client ou ticket d'assistance lié à une commande.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "clientName": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "status": { "type": "string", "enum": ["OPEN", "IN_PROGRESS", "RESOLVED"] },
+        "resolutionNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "clientName", "subject", "description", "severity", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/CompanyConfig" },
+      "description": "Configuration multi-tenant de l'entreprise pressing."
+    },
+    "/users/{userId}/services/{serviceId}": {
+      "schema": { "$ref": "#/entities/ServiceItem" },
+      "description": "Catalogue des services, vêtements, tarifs et délais."
+    },
+    "/users/{userId}/clients/{clientId}": {
+      "schema": { "$ref": "#/entities/ClientRecord" },
+      "description": "Répertoire CRM des clients du pressing."
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/PressingOrder" },
+      "description": "Commandes, vêtements photographiés et suivi de production."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/AccountingEntry" },
+      "description": "Journal de caisse et écritures comptables SYSCOHADA."
+    },
+    "/users/{userId}/stocks/{stockId}": {
+      "schema": { "$ref": "#/entities/StockItem" },
+      "description": "Stocks consommables et équipements industriels."
+    },
+    "/users/{userId}/employees/{employeeId}": {
+      "schema": { "$ref": "#/entities/EmployeeRecord" },
+      "description": "Personnel, rôles, présences et commissions."
+    },
+    "/users/{userId}/claims/{claimId}": {
+      "schema": { "$ref": "#/entities/ClaimRecord" },
+      "description": "Réclamations clients et tickets de suivi qualité."
+    }
+  }
+}

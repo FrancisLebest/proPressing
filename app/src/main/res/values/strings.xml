@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Pressing Pro</string>
+    <string name="auth_header_title">Connexion</string>
+    <string name="auth_header_subtitle">Accédez à votre espace professionnel GESTION PRO AFRICA – Pressing Pro.</string>
+    <string name="auth_google_button">Continuer avec Google</string>
+    <string name="auth_switch_google_account">Utiliser un autre compte Google</string>
+    <string name="auth_connecting_label">Connexion en cours...</string>
+    <string name="auth_email_console_title">Activation requise dans la Console Firebase</string>
+    <string name="auth_email_console_desc">La connexion Google est déjà active et sécurisée pour votre espace cloud. Pour utiliser la méthode E-mail ou Téléphone avec Mot de passe, activez le fournisseur « Adresse e-mail / Mot de passe » dans Console Firebase → Authentication → Sign-in method.</string>
+</resources>

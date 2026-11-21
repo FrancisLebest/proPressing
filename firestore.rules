@@ -1,0 +1,494 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- HARDENED PRIMITIVE HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isOptString(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isValidPaymentMethod(method) {
+      return method is string && method in [
+        'ESPECES', 'ORANGE_MONEY', 'MTN_MOMO', 'WAVE', 'MOOV_MONEY', 'CARTE', 'VIREMENT'
+      ];
+    }
+
+    function isValidOrderStatus(status) {
+      return status is string && status in [
+        'PENDING', 'ACCEPTED', 'WASHING', 'DRYING', 'IRONING',
+        'FINISHING', 'QUALITY_CHECK', 'READY', 'PICKED_UP', 'DELIVERED', 'CANCELLED'
+      ];
+    }
+
+    // --- ENTITY VALIDATION BLUEPRINTS ---
+
+    function isValidCompanyConfig(data, userId) {
+      return data.userId == userId &&
+        data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 120 &&
+        isOptString(data, 'legalName', 120) &&
+        isOptString(data, 'rccm', 60) &&
+        isOptString(data, 'nif', 60) &&
+        isOptString(data, 'description', 500) &&
+        isOptString(data, 'phone', 30) &&
+        isOptString(data, 'whatsapp', 30) &&
+        isOptString(data, 'email', 120) &&
+        isOptString(data, 'country', 60) &&
+        isOptString(data, 'city', 80) &&
+        isOptString(data, 'commune', 80) &&
+        isOptString(data, 'address', 250) &&
+        (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90)) &&
+        (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180)) &&
+        data.currency is string && data.currency.size() >= 1 && data.currency.size() <= 10 &&
+        (!('taxRatePercent' in data) || (data.taxRatePercent is number && data.taxRatePercent >= 0 && data.taxRatePercent <= 50)) &&
+        isOptString(data, 'openingHours', 120) &&
+        (!('standardDelayHours' in data) || (data.standardDelayHours is int && data.standardDelayHours >= 1 && data.standardDelayHours <= 720)) &&
+        (!('expressDelayHours' in data) || (data.expressDelayHours is int && data.expressDelayHours >= 1 && data.expressDelayHours <= 168)) &&
+        (!('expressSurchargePercent' in data) || (data.expressSurchargePercent is number && data.expressSurchargePercent >= 0 && data.expressSurchargePercent <= 200)) &&
+        data.orderPrefix is string && data.orderPrefix.size() >= 1 && data.orderPrefix.size() <= 20 &&
+        isOptString(data, 'receiptFooter', 300) &&
+        data.receiptFormat is string && data.receiptFormat in ['THERMAL_58', 'THERMAL_80', 'A4_PDF'] &&
+        (!('acceptedPayments' in data) || (data.acceptedPayments is list && data.acceptedPayments.size() <= 10 && (data.acceptedPayments.size() == 0 || data.acceptedPayments[0] is string))) &&
+        (!('agencies' in data) || (data.agencies is list && data.agencies.size() <= 20 && (data.agencies.size() == 0 || data.agencies[0] is string))) &&
+        (!('smsNotificationsEnabled' in data) || data.smsNotificationsEnabled is bool) &&
+        (!('whatsappNotificationsEnabled' in data) || data.whatsappNotificationsEnabled is bool) &&
+        data.subscriptionPlan is string && data.subscriptionPlan in ['STARTER', 'BUSINESS', 'ENTERPRISE'] &&
+        data.subscriptionBilling is string && data.subscriptionBilling in ['MONTHLY', 'QUARTERLY', 'ANNUAL'] &&
+        data.subscriptionStatus is string && data.subscriptionStatus in ['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED'] &&
+        data.setupStep is int && data.setupStep >= 1 && data.setupStep <= 10 &&
+        data.setupCompleted is bool &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidServiceItem(data, userId) {
+      return data.userId == userId &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 50 &&
+        data.treatmentType is string && data.treatmentType.size() >= 1 && data.treatmentType.size() <= 60 &&
+        data.billingUnit is string && data.billingUnit in ['PIECE', 'KG', 'SQM'] &&
+        data.unitPrice is int && data.unitPrice >= 0 && data.unitPrice <= 10000000 &&
+        data.expressPrice is int && data.expressPrice >= 0 && data.expressPrice <= 10000000 &&
+        data.delayHours is int && data.delayHours >= 1 && data.delayHours <= 720 &&
+        data.available is bool &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidClientRecord(data, userId) {
+      return data.userId == userId &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+        data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 30 &&
+        isOptString(data, 'whatsapp', 30) &&
+        isOptString(data, 'email', 120) &&
+        data.category is string && data.category in ['PARTICULIER', 'VIP', 'ENTREPRISE', 'HOTEL', 'RESTAURANT'] &&
+        isOptString(data, 'address', 250) &&
+        (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90)) &&
+        (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180)) &&
+        data.loyaltyPoints is int && data.loyaltyPoints >= 0 && data.loyaltyPoints <= 10000000 &&
+        data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100 &&
+        data.creditLimit is int && data.creditLimit >= 0 && data.creditLimit <= 100000000 &&
+        data.balanceDue is int && data.balanceDue >= -100000000 && data.balanceDue <= 100000000 &&
+        isOptString(data, 'preferences', 300) &&
+        isOptString(data, 'notes', 500) &&
+        data.active is bool &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPressingOrder(data, userId) {
+      return data.userId == userId &&
+        data.orderNumber is string && data.orderNumber.size() >= 1 && data.orderNumber.size() <= 40 &&
+        isOptString(data, 'agencyName', 100) &&
+        isOptString(data, 'clientId', 128) &&
+        data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120 &&
+        isOptString(data, 'clientPhone', 30) &&
+        isOptString(data, 'clientAddress', 250) &&
+        isValidOrderStatus(data.status) &&
+        data.priority is string && data.priority in ['ECONOMY', 'STANDARD', 'EXPRESS'] &&
+        data.items is list && data.items.size() <= 50 && (data.items.size() == 0 || data.items[0] is map) &&
+        data.itemCount is int && data.itemCount >= 0 && data.itemCount <= 1000 &&
+        data.subtotal is int && data.subtotal >= 0 && data.subtotal <= 100000000 &&
+        data.discountAmount is int && data.discountAmount >= 0 && data.discountAmount <= 100000000 &&
+        data.expressFee is int && data.expressFee >= 0 && data.expressFee <= 100000000 &&
+        data.deliveryFee is int && data.deliveryFee >= 0 && data.deliveryFee <= 100000000 &&
+        data.taxAmount is int && data.taxAmount >= 0 && data.taxAmount <= 100000000 &&
+        data.totalAmount is int && data.totalAmount >= 0 && data.totalAmount <= 100000000 &&
+        data.paidAmount is int && data.paidAmount >= 0 && data.paidAmount <= 100000000 &&
+        data.remainingAmount is int && data.remainingAmount >= 0 && data.remainingAmount <= 100000000 &&
+        data.paymentStatus is string && data.paymentStatus in ['UNPAID', 'PARTIAL', 'PAID'] &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        data.deliveryRequested is bool &&
+        isOptString(data, 'deliveryDriver', 100) &&
+        isOptString(data, 'deliveryZone', 100) &&
+        isOptString(data, 'assignedEmployee', 100) &&
+        data.qualityChecked is bool &&
+        isOptString(data, 'clientSignatureName', 120) &&
+        isOptString(data, 'observations', 500) &&
+        data.dueDateMillis is int && data.dueDateMillis >= 0 &&
+        data.statusHistory is list && data.statusHistory.size() <= 30 && (data.statusHistory.size() == 0 || data.statusHistory[0] is string) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAccountingEntry(data, userId) {
+      return data.userId == userId &&
+        data.reference is string && data.reference.size() >= 1 && data.reference.size() <= 60 &&
+        data.entryType is string && data.entryType in ['REVENUE', 'EXPENSE', 'CASH_OPEN', 'CASH_CLOSE', 'REFUND'] &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.syscohadaAccount is string && data.syscohadaAccount.size() >= 1 && data.syscohadaAccount.size() <= 20 &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 200 &&
+        data.amount is int && data.amount >= 0 && data.amount <= 100000000 &&
+        isValidPaymentMethod(data.paymentMethod) &&
+        isOptString(data, 'orderId', 128) &&
+        isOptString(data, 'counterparty', 120) &&
+        isOptString(data, 'agencyName', 100) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStockItem(data, userId) {
+      return data.userId == userId &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.itemKind is string && data.itemKind in ['CONSUMABLE', 'MACHINE'] &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+        data.quantity is int && data.quantity >= 0 && data.quantity <= 1000000 &&
+        data.minThreshold is int && data.minThreshold >= 0 && data.minThreshold <= 1000000 &&
+        data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 30 &&
+        data.unitCost is int && data.unitCost >= 0 && data.unitCost <= 100000000 &&
+        isOptString(data, 'supplierName', 120) &&
+        data.machineStatus is string && data.machineStatus in ['OPERATIONAL', 'MAINTENANCE', 'BREAKDOWN'] &&
+        isOptString(data, 'maintenanceNotes', 400) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidEmployeeRecord(data, userId) {
+      return data.userId == userId &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+        isOptString(data, 'phone', 30) &&
+        data.role is string && data.role in ['DIRECTEUR', 'CAISSIER', 'OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR'] &&
+        isOptString(data, 'agencyName', 100) &&
+        data.monthlySalary is int && data.monthlySalary >= 0 && data.monthlySalary <= 100000000 &&
+        data.commissionRate is number && data.commissionRate >= 0 && data.commissionRate <= 100 &&
+        data.presentToday is bool &&
+        data.active is bool &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidClaimRecord(data, userId) {
+      return data.userId == userId &&
+        isOptString(data, 'orderNumber', 40) &&
+        data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120 &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 600 &&
+        data.severity is string && data.severity in ['LOW', 'MEDIUM', 'HIGH'] &&
+        data.status is string && data.status in ['OPEN', 'IN_PROGRESS', 'RESOLVED'] &&
+        isOptString(data, 'resolutionNote', 400) &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    // --- MULTI-TENANT COMPANY ROOT & SUBCOLLECTIONS ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+        isValidId(userId) &&
+        incoming().keys().hasAll([
+          'userId', 'companyName', 'currency', 'orderPrefix', 'receiptFormat',
+          'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
+          'setupStep', 'setupCompleted', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'userId', 'companyName', 'legalName', 'rccm', 'nif', 'description',
+          'phone', 'whatsapp', 'email', 'country', 'city', 'commune', 'address',
+          'latitude', 'longitude', 'currency', 'taxRatePercent', 'openingHours',
+          'standardDelayHours', 'expressDelayHours', 'expressSurchargePercent',
+          'orderPrefix', 'receiptFooter', 'receiptFormat', 'acceptedPayments',
+          'agencies', 'smsNotificationsEnabled', 'whatsappNotificationsEnabled',
+          'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
+          'setupStep', 'setupCompleted', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidCompanyConfig(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+        isValidId(userId) &&
+        isValidCompanyConfig(incoming(), userId) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'companyName', 'legalName', 'rccm', 'nif', 'description',
+          'phone', 'whatsapp', 'email', 'country', 'city', 'commune', 'address',
+          'latitude', 'longitude', 'currency', 'taxRatePercent', 'openingHours',
+          'standardDelayHours', 'expressDelayHours', 'expressSurchargePercent',
+          'orderPrefix', 'receiptFooter', 'receiptFormat', 'acceptedPayments',
+          'agencies', 'smsNotificationsEnabled', 'whatsappNotificationsEnabled',
+          'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
+          'setupStep', 'setupCompleted', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      // Services & Tarifs
+      match /services/{serviceId} {
+        allow get: if isOwner(userId) && isValidId(serviceId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(serviceId) &&
+          incoming().keys().hasAll([
+            'userId', 'name', 'category', 'treatmentType', 'billingUnit',
+            'unitPrice', 'expressPrice', 'delayHours', 'available', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'name', 'category', 'treatmentType', 'billingUnit',
+            'unitPrice', 'expressPrice', 'delayHours', 'available', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidServiceItem(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(serviceId) &&
+          isValidServiceItem(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'category', 'treatmentType', 'billingUnit',
+            'unitPrice', 'expressPrice', 'delayHours', 'available', 'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId) && isValidId(serviceId);
+      }
+
+      // Clients CRM
+      match /clients/{clientId} {
+        allow get: if isOwner(userId) && isValidId(clientId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(clientId) &&
+          incoming().keys().hasAll([
+            'userId', 'fullName', 'phone', 'category', 'loyaltyPoints',
+            'discountPercent', 'creditLimit', 'balanceDue', 'active', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'fullName', 'phone', 'whatsapp', 'email', 'category',
+            'address', 'latitude', 'longitude', 'loyaltyPoints', 'discountPercent',
+            'creditLimit', 'balanceDue', 'preferences', 'notes', 'active', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidClientRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(clientId) &&
+          isValidClientRecord(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'phone', 'whatsapp', 'email', 'category',
+            'address', 'latitude', 'longitude', 'loyaltyPoints', 'discountPercent',
+            'creditLimit', 'balanceDue', 'preferences', 'notes', 'active', 'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId) && isValidId(clientId);
+      }
+
+      // Commandes & Production
+      match /orders/{orderId} {
+        allow get: if isOwner(userId) && isValidId(orderId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(orderId) &&
+          incoming().keys().hasAll([
+            'userId', 'orderNumber', 'clientName', 'status', 'priority', 'items',
+            'itemCount', 'subtotal', 'discountAmount', 'expressFee', 'deliveryFee',
+            'taxAmount', 'totalAmount', 'paidAmount', 'remainingAmount',
+            'paymentStatus', 'paymentMethod', 'deliveryRequested', 'qualityChecked',
+            'dueDateMillis', 'statusHistory', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'orderNumber', 'agencyName', 'clientId', 'clientName', 'clientPhone',
+            'clientAddress', 'status', 'priority', 'items', 'itemCount', 'subtotal',
+            'discountAmount', 'expressFee', 'deliveryFee', 'taxAmount', 'totalAmount',
+            'paidAmount', 'remainingAmount', 'paymentStatus', 'paymentMethod',
+            'deliveryRequested', 'deliveryDriver', 'deliveryZone', 'assignedEmployee',
+            'qualityChecked', 'clientSignatureName', 'observations', 'dueDateMillis',
+            'statusHistory', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidPressingOrder(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(orderId) &&
+          isValidPressingOrder(incoming(), userId) &&
+          existing().status != 'CANCELLED' &&
+          incoming().userId == existing().userId &&
+          incoming().orderNumber == existing().orderNumber &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            // Action 1: Production workflow, per-item workshop tracking & quality update
+            (incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'items', 'assignedEmployee', 'qualityChecked', 'statusHistory', 'observations', 'updatedAt'
+            ]) &&
+              incoming().itemCount == existing().itemCount &&
+              incoming().subtotal == existing().subtotal &&
+              incoming().totalAmount == existing().totalAmount &&
+              incoming().paidAmount == existing().paidAmount &&
+              incoming().remainingAmount == existing().remainingAmount) ||
+            // Action 2: Payment settlement update
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'paidAmount', 'remainingAmount', 'paymentStatus', 'paymentMethod', 'statusHistory', 'updatedAt'
+            ]) ||
+            // Action 3: Delivery assignment & dispatch update
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'deliveryRequested', 'deliveryDriver', 'deliveryZone', 'status', 'statusHistory', 'updatedAt'
+            ])
+          );
+
+        allow delete: if false;
+      }
+
+      // Caisse & Comptabilité SYSCOHADA (audit trail immutable: pas de suppression)
+      match /transactions/{transactionId} {
+        allow get: if isOwner(userId) && isValidId(transactionId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(transactionId) &&
+          incoming().keys().hasAll([
+            'userId', 'reference', 'entryType', 'category', 'syscohadaAccount',
+            'label', 'amount', 'paymentMethod', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'reference', 'entryType', 'category', 'syscohadaAccount',
+            'label', 'amount', 'paymentMethod', 'orderId', 'counterparty',
+            'agencyName', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidAccountingEntry(incoming(), userId);
+
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Stocks & Machines
+      match /stocks/{stockId} {
+        allow get: if isOwner(userId) && isValidId(stockId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(stockId) &&
+          incoming().keys().hasAll([
+            'userId', 'name', 'itemKind', 'category', 'quantity', 'minThreshold',
+            'unit', 'unitCost', 'machineStatus', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'name', 'itemKind', 'category', 'quantity', 'minThreshold',
+            'unit', 'unitCost', 'supplierName', 'machineStatus', 'maintenanceNotes',
+            'createdAt', 'updatedAt'
+          ]) &&
+          isValidStockItem(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(stockId) &&
+          isValidStockItem(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'itemKind', 'category', 'quantity', 'minThreshold',
+            'unit', 'unitCost', 'supplierName', 'machineStatus', 'maintenanceNotes', 'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId) && isValidId(stockId);
+      }
+
+      // Employés & Présences
+      match /employees/{employeeId} {
+        allow get: if isOwner(userId) && isValidId(employeeId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(employeeId) &&
+          incoming().keys().hasAll([
+            'userId', 'fullName', 'role', 'monthlySalary', 'commissionRate',
+            'presentToday', 'active', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'fullName', 'phone', 'role', 'agencyName', 'monthlySalary',
+            'commissionRate', 'presentToday', 'active', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidEmployeeRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(employeeId) &&
+          isValidEmployeeRecord(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'phone', 'role', 'agencyName', 'monthlySalary',
+            'commissionRate', 'presentToday', 'active', 'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId) && isValidId(employeeId);
+      }
+
+      // Réclamations & Tickets Qualité
+      match /claims/{claimId} {
+        allow get: if isOwner(userId) && isValidId(claimId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+          isValidId(claimId) &&
+          incoming().keys().hasAll([
+            'userId', 'clientName', 'subject', 'description', 'severity',
+            'status', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'orderNumber', 'clientName', 'subject', 'description',
+            'severity', 'status', 'resolutionNote', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidClaimRecord(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+          isValidId(claimId) &&
+          isValidClaimRecord(incoming(), userId) &&
+          existing().status != 'RESOLVED' &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'severity', 'resolutionNote', 'updatedAt'
+          ]);
+
+        allow delete: if isOwner(userId) && isValidId(claimId);
+      }
+    }
+  }
+}
