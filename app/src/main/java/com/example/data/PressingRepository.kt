@@ -197,6 +197,21 @@ class PressingRepository(
         )
     }
 
+    fun observeAuditLogs(userId: String): Flow<List<AuditLogRecord>> = flow {
+        requireUserId(userId)
+        val path = "users/$userId/audit_logs"
+        emitAll(
+            userDoc(userId).collection("audit_logs")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(AuditLogRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        .take(50)
+                }
+                .logAndRethrow(userId, OperationType.LIST, path)
+        )
+    }
+
     // --- MUTATIONS ---
 
     suspend fun saveCompanyConfig(userId: String, config: CompanyConfig): Result<Unit> {
@@ -764,6 +779,144 @@ class PressingRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun returnOrderToRework(
+        userId: String,
+        order: PressingOrder,
+        targetStage: GarmentWorkshopStatus,
+        reason: String,
+        operatorName: String
+    ): Result<Unit> {
+        val path = "users/$userId/orders/${order.id}"
+        return try {
+            requireUserId(userId)
+            require(order.id.isNotBlank())
+            val parsed = order.parsedItems().map { item ->
+                item.copy(workshopStatus = targetStage.name).toMap()
+            }
+            val safeReason = reason.trim().ifBlank { "Reprise qualité demandée" }.take(200)
+            val entryText = "${nowFormatted()} · Reprise → ${targetStage.labelFr} ($operatorName) : $safeReason".take(160)
+            val newHistory = (order.statusHistory + entryText).takeLast(30)
+            val targetOrderStatus = if (targetStage == GarmentWorkshopStatus.IRONING) OrderStatus.IRONING else OrderStatus.WASHING
+            userDoc(userId).collection("orders").document(order.id).update(
+                mapOf(
+                    "items" to parsed,
+                    "status" to targetOrderStatus.name,
+                    "assignedEmployee" to operatorName.ifBlank { order.assignedEmployee }.trim().take(100),
+                    "qualityChecked" to false,
+                    "observations" to safeReason.take(500),
+                    "statusHistory" to newHistory,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun confirmDeliveryWithProof(
+        userId: String,
+        order: PressingOrder,
+        driverName: String,
+        zone: String,
+        recipientName: String,
+        proofNote: String
+    ): Result<Unit> {
+        val path = "users/$userId/orders/${order.id}"
+        return try {
+            requireUserId(userId)
+            require(order.id.isNotBlank())
+            val safeRecipient = recipientName.trim().ifBlank { order.clientName }.take(80)
+            val safeNote = proofNote.trim().take(120)
+            val logEntry = buildString {
+                append("${nowFormatted()} · Livrée par $driverName ($zone) · Reçu par $safeRecipient")
+                if (safeNote.isNotBlank()) append(" · $safeNote")
+            }.take(160)
+            val newHistory = (order.statusHistory + logEntry).takeLast(30)
+            userDoc(userId).collection("orders").document(order.id).update(
+                mapOf(
+                    "deliveryRequested" to true,
+                    "deliveryDriver" to driverName.trim().take(100),
+                    "deliveryZone" to zone.trim().take(100),
+                    "status" to OrderStatus.DELIVERED.name,
+                    "statusHistory" to newHistory,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun logAuditEvent(userId: String, record: AuditLogRecord): Result<Unit> {
+        val path = "users/$userId/audit_logs"
+        return try {
+            requireUserId(userId)
+            userDoc(userId).collection("audit_logs").document().set(record.toCreateMap(userId)).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best-effort audit logging: log without crashing UI flow
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    fun observePushNotifications(userId: String): Flow<List<PushNotificationRecord>> = flow {
+        requireUserId(userId)
+        val path = "users/$userId/notifications"
+        emitAll(
+            userDoc(userId).collection("notifications")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(PushNotificationRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        .take(30)
+                }
+                .logAndRethrow(userId, OperationType.LIST, path)
+        )
+    }
+
+    suspend fun saveFcmToken(userId: String, record: FcmTokenRecord): Result<Unit> {
+        val docId = "device_${record.token.hashCode().toUInt()}"
+        val path = "users/$userId/fcm_tokens/$docId"
+        return try {
+            requireUserId(userId)
+            if (record.token.isBlank()) return Result.success(Unit)
+            userDoc(userId).collection("fcm_tokens").document(docId)
+                .set(record.toCreateMap(userId)).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun dispatchPushNotificationRecord(userId: String, record: PushNotificationRecord): Result<Unit> {
+        val path = "users/$userId/notifications"
+        return try {
+            requireUserId(userId)
+            userDoc(userId).collection("notifications").document()
+                .set(record.toCreateMap(userId)).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
             Result.failure(e)
         }
     }

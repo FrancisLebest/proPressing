@@ -294,7 +294,11 @@ fun NewOrderScreen(
     val expressFee = if (priority == OrderPriority.EXPRESS) {
         (subtotal * company.expressSurchargePercent / 100.0).toLong()
     } else 0L
-    val discountPct = discountPercentStr.toDoubleOrNull()?.coerceIn(0.0, 100.0) ?: 0.0
+    val isCashierCapped = activeSession.role == com.example.data.WorkspaceRole.CAISSIER
+    val maxAllowedDiscount = if (isCashierCapped) company.maxCashierDiscountPercent.coerceIn(0.0, 100.0) else 100.0
+    val rawDiscountPct = discountPercentStr.toDoubleOrNull()?.coerceIn(0.0, 100.0) ?: 0.0
+    val discountPct = rawDiscountPct.coerceAtMost(maxAllowedDiscount)
+    val discountExceededCap = isCashierCapped && rawDiscountPct > maxAllowedDiscount
     val discountAmount = (subtotal * discountPct / 100.0).toLong()
     val deliveryFee = if (deliveryRequested) (deliveryFeeStr.toLongOrNull() ?: 0L) else 0L
     val taxableBase = (subtotal - discountAmount + expressFee + deliveryFee).coerceAtLeast(0L)
@@ -1404,8 +1408,24 @@ fun NewOrderScreen(
                         value = discountPercentStr,
                         onValueChange = { discountPercentStr = it.filter { c -> c.isDigit() || c == '.' } },
                         label = { Text("Remise commerciale (%)") },
+                        supportingText = if (isCashierCapped) {
+                            {
+                                Text(
+                                    text = if (discountExceededCap) {
+                                        "Plafond Caissier appliqué : ${maxAllowedDiscount.toInt()}% maximum sans validation Gérant."
+                                    } else {
+                                        "Plafond Caissier autorisé : max ${maxAllowedDiscount.toInt()}% (remise entreprises : ${company.corporateDiscountPercent.toInt()}%)."
+                                    },
+                                    color = if (discountExceededCap) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    softWrap = true
+                                )
+                            }
+                        } else null,
+                        isError = discountExceededCap,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp),
                         singleLine = true
                     )
 

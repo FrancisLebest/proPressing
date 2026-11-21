@@ -1,154 +1,161 @@
 package com.example.data
 
+/**
+ * Exact 27 granular RBAC privileges across 5 operational domains:
+ * 1. Commandes & Catalogue (6)
+ * 2. Atelier & Qualité (5)
+ * 3. Caisse & Finances (6)
+ * 4. Clients, Livraison & SAV (5)
+ * 5. Administration, RH & Sécurité (5)
+ */
 enum class AccessPermission(
     val labelFr: String,
     val domainFr: String,
     val descriptionFr: String
 ) {
-    VIEW_EXECUTIVE_DASHBOARD(
-        "Tableau de bord Direction",
-        "Pilotage & Finances",
-        "Accès aux KPIs exécutifs, courbes et répartition globale"
-    ),
-    VIEW_FINANCIAL_KPIS(
-        "Indicateurs financiers & CA",
-        "Pilotage & Finances",
-        "Consultation du chiffre d'affaires, marges et encaissements"
-    ),
-    VIEW_ACCOUNTING_SYSCOHADA(
-        "Comptabilité SYSCOHADA",
-        "Pilotage & Finances",
-        "Accès au journal comptable, comptes de trésorerie et bilan"
-    ),
-    ADD_EXPENSE(
-        "Saisir dépenses & écritures",
-        "Pilotage & Finances",
-        "Enregistrer des dépenses, charges et opérations de trésorerie"
-    ),
-    VIEW_REPORTS(
-        "Rapports & Analyses",
-        "Pilotage & Finances",
-        "Consultation des statistiques de ventes, fidélité et exports"
-    ),
-
-    VIEW_ORDERS(
-        "Consulter les commandes",
-        "Commandes & Atelier",
-        "Accès à la liste et au suivi des commandes de son périmètre"
-    ),
+    // --- 1. Commandes & Catalogue (6) ---
     CREATE_ORDER(
-        "Créer une commande",
-        "Commandes & Atelier",
+        "Créer commande",
+        "Commandes & Catalogue",
         "Réception de vêtements, prise de photo et création de tickets"
     ),
+    EDIT_ORDER(
+        "Modifier commande",
+        "Commandes & Catalogue",
+        "Consulter et mettre à jour les détails d'une commande de son périmètre"
+    ),
+    CANCEL_DELETE_ORDER(
+        "Annuler / Supprimer commande",
+        "Commandes & Catalogue",
+        "Annuler une commande avant livraison avec motif journalisé"
+    ),
+    APPLY_STANDARD_DISCOUNT(
+        "Appliquer remise standard",
+        "Commandes & Catalogue",
+        "Accorder une remise commerciale dans la limite du plafond agence"
+    ),
+    APPROVE_EXCEPTIONAL_DISCOUNT(
+        "Valider remise exceptionnelle",
+        "Commandes & Catalogue",
+        "Autoriser une remise supérieure au plafond caissier"
+    ),
+    MANAGE_CATALOG(
+        "Modifier catalogue tarifs",
+        "Commandes & Catalogue",
+        "Modifier la grille des 43 articles, délais express et tarifs FCFA"
+    ),
+
+    // --- 2. Atelier & Qualité (5) ---
     ADVANCE_PRODUCTION(
-        "Avancer le traitement atelier",
-        "Commandes & Atelier",
-        "Passer les vêtements de Lavage à Séchage, Repassage, Finition"
+        "Avancer étape lavage/séchage/repassage",
+        "Atelier & Qualité",
+        "Faire progresser les vêtements sur les postes atelier et suivre les stocks"
     ),
     VALIDATE_QUALITY(
-        "Valider le contrôle qualité",
-        "Commandes & Atelier",
-        "Certifier la qualité avant passage au statut Prête"
+        "Valider contrôle qualité",
+        "Atelier & Qualité",
+        "Certifier la conformité finale et passer la commande au statut Prête"
+    ),
+    RETURN_FOR_REWORK(
+        "Renvoyer en reprise",
+        "Atelier & Qualité",
+        "Rejeter une pièce non conforme et la renvoyer en lavage ou repassage"
+    ),
+    VIEW_RECEPTION_PHOTOS(
+        "Consulter photos réception",
+        "Atelier & Qualité",
+        "Visualiser les photos de taches/défauts capturées à la réception et l'IA"
+    ),
+    REPRINT_GARMENT_LABEL(
+        "Réimprimer étiquette vêtement (sans prix)",
+        "Atelier & Qualité",
+        "Imprimer les étiquettes individuelles 1/N de suivi atelier sans montant"
     ),
 
+    // --- 3. Caisse & Finances (6) ---
     COLLECT_PAYMENT(
-        "Encaisser un paiement",
-        "Caisse & Facturation",
-        "Enregistrer un règlement Espèces, Mobile Money ou Carte"
+        "Encaisser paiement",
+        "Caisse & Finances",
+        "Encaisser un règlement Espèces, Wave, Orange Money, MTN MoMo ou Moov"
     ),
-    USE_POS(
-        "Caisse Enregistreuse (POS)",
-        "Caisse & Facturation",
-        "Utiliser le comptoir tactile d'encaissement rapide"
+    MANAGE_CASH_REGISTER_Z(
+        "Ouvrir / Clôturer Z de caisse",
+        "Caisse & Finances",
+        "Ouvrir la session caisse et exécuter la clôture Z journalière"
     ),
-    VIEW_INVOICES(
-        "Facturation & Reçus",
-        "Caisse & Facturation",
-        "Consulter, imprimer et partager les factures clients"
+    ADD_EXPENSE(
+        "Saisir dépense caisse",
+        "Caisse & Finances",
+        "Enregistrer une dépense d'exploitation ou sortie de caisse agence"
     ),
-    MANAGE_QUOTES(
-        "Devis & Simulateur",
-        "Caisse & Facturation",
-        "Créer et envoyer des devis professionnels"
+    VIEW_AGENCY_REVENUE(
+        "Consulter CA agence",
+        "Caisse & Finances",
+        "Consulter le chiffre d'affaires, les encaissements et la marge de son agence"
     ),
-
-    VIEW_CLIENTS(
-        "Consulter le CRM Clients",
-        "Clients & Marketing",
-        "Accès aux fiches clients, historique et fidélité"
+    VIEW_MULTI_AGENCY_SYSCOHADA(
+        "Consulter CA multi-agences & SYSCOHADA",
+        "Caisse & Finances",
+        "Vue consolidée multi-agences, journal SYSCOHADA complet et Super-Admin"
     ),
-    EDIT_CLIENTS(
-        "Créer / modifier clients",
-        "Clients & Marketing",
-        "Ajouter ou mettre à jour des coordonnées et remises clients"
-    ),
-    DELETE_CLIENTS(
-        "Supprimer une fiche client",
-        "Clients & Marketing",
-        "Suppression définitive d'un client du CRM"
-    ),
-    MANAGE_MARKETING(
-        "Relances & Marketing",
-        "Clients & Marketing",
-        "Campagnes WhatsApp, relances impayés et fidélité"
+    EXPORT_FINANCIAL_REPORTS(
+        "Exporter rapports financiers",
+        "Caisse & Finances",
+        "Exporter les bilans, analyses de ventes et états financiers"
     ),
 
-    MANAGE_CATALOG(
-        "Gérer articles & tarifs",
-        "Stocks, Tarifs & Livraisons",
-        "Modifier la grille tarifaire, délais et prestations"
+    // --- 4. Clients, Livraison & SAV (5) ---
+    MANAGE_CLIENTS(
+        "Créer / Modifier fiche client",
+        "Clients, Livraison & SAV",
+        "Gérer le CRM clients, coordonnées, fidélité et historique"
     ),
-    VIEW_STOCKS(
-        "Consulter stocks & machines",
-        "Stocks, Tarifs & Livraisons",
-        "Visualiser les consommables et l'état des équipements"
+    SEND_WHATSAPP_NOTIFICATION(
+        "Envoyer notification WhatsApp",
+        "Clients, Livraison & SAV",
+        "Notifier les clients par WhatsApp (retrait prêt, rappel, livraison)"
     ),
-    EDIT_STOCKS(
-        "Modifier stocks & maintenance",
-        "Stocks, Tarifs & Livraisons",
-        "Réapprovisionner les produits et mettre à jour les machines"
+    MANAGE_DELIVERY_RUNS(
+        "Gérer tournées livraison",
+        "Clients, Livraison & SAV",
+        "Consulter, affecter et clôturer les collectes et livraisons GPS"
     ),
-    VIEW_DELIVERIES(
-        "Consulter les livraisons GPS",
-        "Stocks, Tarifs & Livraisons",
-        "Accéder aux tournées de collecte et livraison"
+    HANDLE_SAV_CLAIMS(
+        "Traiter litige / indemnisation SAV",
+        "Clients, Livraison & SAV",
+        "Ouvrir, qualifier et résoudre les réclamations et litiges clients"
     ),
-    DISPATCH_DELIVERIES(
-        "Affecter & clôturer livraisons",
-        "Stocks, Tarifs & Livraisons",
-        "Assigner un livreur ou confirmer la remise au client"
+    REPRINT_CLIENT_RECEIPT(
+        "Réimprimer reçu client avec prix",
+        "Clients, Livraison & SAV",
+        "Imprimer ou partager les tickets de caisse et factures en FCFA"
     ),
 
-    MANAGE_CLAIMS(
-        "Réclamations & Qualité SAV",
-        "Administration & Sécurité",
-        "Traiter et résoudre les tickets de réclamation clients"
+    // --- 5. Administration, RH & Sécurité (5) ---
+    MANAGE_USERS_AND_ROLES(
+        "Gérer utilisateurs & rôles",
+        "Administration, RH & Sécurité",
+        "Créer, activer et affecter les employés aux agences et profils métier"
     ),
-    USE_AI_ASSISTANT(
-        "Assistant IA Gemini",
-        "Administration & Sécurité",
-        "Utiliser l'inspection textile et le conseiller IA Gemini"
+    EDIT_PRIVILEGE_MATRIX(
+        "Modifier matrice des privilèges",
+        "Administration, RH & Sécurité",
+        "Ajuster les 27 privilèges RBAC par rôle métier"
     ),
-    MANAGE_STAFF_AND_ROLES(
-        "Personnel, Rôles & Droits",
-        "Administration & Sécurité",
-        "Gérer les employés, les rôles et les privilèges d'accès"
+    CONFIGURE_PRINTER_AND_AGENCY(
+        "Configurer imprimante & paramètres agence",
+        "Administration, RH & Sécurité",
+        "Paramétrer les coordonnées légales, imprimantes thermiques et plafonds"
     ),
-    VIEW_SALARIES(
-        "Consulter salaires & primes",
-        "Administration & Sécurité",
-        "Voir les salaires mensuels et taux de commission du personnel"
+    VIEW_HR_SALARIES(
+        "Consulter salaires & paie RH",
+        "Administration, RH & Sécurité",
+        "Accéder aux salaires mensuels, primes et commissions du personnel"
     ),
-    MANAGE_SAAS_ADMIN(
-        "Super-Admin SaaS & Abonnement",
-        "Administration & Sécurité",
-        "Changer de formule SaaS et exporter la sauvegarde complète"
-    ),
-    MANAGE_SETTINGS(
-        "Paramètres Entreprise",
-        "Administration & Sécurité",
-        "Modifier l'identité légale, les agences et le setup 10 étapes"
+    VIEW_SECURITY_AUDIT_LOG(
+        "Consulter journal d'audit sécurité",
+        "Administration, RH & Sécurité",
+        "Auditer les accès refusés, remises exceptionnelles et écarts de caisse"
     )
 }
 
@@ -176,37 +183,37 @@ enum class WorkspaceRole(
     DIRECTEUR(
         labelFr = "Directeur Général",
         shortTitleFr = "Directeur",
-        descriptionFr = "Contrôle total de l'entité, finances SYSCOHADA, RH, droits et multi-agences.",
+        descriptionFr = "Vue multi-agences stratégique, finances SYSCOHADA, gouvernance, RH et 27 privilèges.",
         defaultScope = DataIsolationScope.ALL_TENANT_AGENCIES
     ),
     GERANT_AGENCE(
         labelFr = "Gérant d'Agence",
         shortTitleFr = "Gérant",
-        descriptionFr = "Pilotage opérationnel et financier isolé exclusivement à son agence.",
+        descriptionFr = "Pilotage opérationnel, caisse locale, équipe et tarifs isolés à son agence.",
         defaultScope = DataIsolationScope.SINGLE_AGENCY
     ),
     CAISSIER(
-        labelFr = "Caissier(ère) / Réception",
+        labelFr = "Caissier / Accueil Comptoir",
         shortTitleFr = "Caisse",
-        descriptionFr = "Accueil clients, prise de commandes, caisse POS et encaissements comptoir.",
+        descriptionFr = "Prise de commande, encaissements Mobile Money/Espèces et clôture Z de sa session.",
         defaultScope = DataIsolationScope.SINGLE_AGENCY
     ),
     OPERATEUR(
         labelFr = "Opérateur Atelier",
         shortTitleFr = "Atelier",
-        descriptionFr = "Production textile (lavage, séchage, repassage) et suivi machines sans données financières.",
+        descriptionFr = "Production textile (lavage, séchage, repassage) et scan étiquettes sans aucune donnée financière.",
         defaultScope = DataIsolationScope.SINGLE_AGENCY
     ),
     CONTROLE_QUALITE(
         labelFr = "Contrôle Qualité & SAV",
         shortTitleFr = "Qualité",
-        descriptionFr = "Validation finale du linge, inspection IA et gestion des réclamations sans accès caisse.",
+        descriptionFr = "Inspection avant/après, validation Prêt, renvoi en reprise et SAV sans données financières.",
         defaultScope = DataIsolationScope.SINGLE_AGENCY
     ),
     LIVREUR(
-        labelFr = "Livreur / Coursier GPS",
+        labelFr = "Livreur GPS",
         shortTitleFr = "Livreur",
-        descriptionFr = "Espace strictement isolé sur ses collectes et livraisons assignées avec carte GPS.",
+        descriptionFr = "Tournées par quartier, itinéraire GPS, preuve de livraison et COD uniquement sur ses colis.",
         defaultScope = DataIsolationScope.PERSONAL_ASSIGNMENTS
     );
 
@@ -239,82 +246,92 @@ object RolePermissionMatrix {
         WorkspaceRole.DIRECTEUR -> AccessPermission.entries.toSet()
 
         WorkspaceRole.GERANT_AGENCE -> setOf(
-            AccessPermission.VIEW_EXECUTIVE_DASHBOARD,
-            AccessPermission.VIEW_FINANCIAL_KPIS,
-            AccessPermission.VIEW_ORDERS,
+            // Commandes & Catalogue (6/6)
             AccessPermission.CREATE_ORDER,
+            AccessPermission.EDIT_ORDER,
+            AccessPermission.CANCEL_DELETE_ORDER,
+            AccessPermission.APPLY_STANDARD_DISCOUNT,
+            AccessPermission.APPROVE_EXCEPTIONAL_DISCOUNT,
+            AccessPermission.MANAGE_CATALOG,
+            // Atelier & Qualité (5/5)
             AccessPermission.ADVANCE_PRODUCTION,
             AccessPermission.VALIDATE_QUALITY,
+            AccessPermission.RETURN_FOR_REWORK,
+            AccessPermission.VIEW_RECEPTION_PHOTOS,
+            AccessPermission.REPRINT_GARMENT_LABEL,
+            // Caisse & Finances (5/6 — sans CA multi-agences & SYSCOHADA global)
             AccessPermission.COLLECT_PAYMENT,
-            AccessPermission.USE_POS,
-            AccessPermission.VIEW_INVOICES,
-            AccessPermission.MANAGE_QUOTES,
-            AccessPermission.VIEW_CLIENTS,
-            AccessPermission.EDIT_CLIENTS,
-            AccessPermission.MANAGE_MARKETING,
-            AccessPermission.MANAGE_CATALOG,
-            AccessPermission.VIEW_STOCKS,
-            AccessPermission.EDIT_STOCKS,
-            AccessPermission.VIEW_DELIVERIES,
-            AccessPermission.DISPATCH_DELIVERIES,
-            AccessPermission.MANAGE_CLAIMS,
-            AccessPermission.USE_AI_ASSISTANT,
-            AccessPermission.VIEW_REPORTS
+            AccessPermission.MANAGE_CASH_REGISTER_Z,
+            AccessPermission.ADD_EXPENSE,
+            AccessPermission.VIEW_AGENCY_REVENUE,
+            AccessPermission.EXPORT_FINANCIAL_REPORTS,
+            // Clients, Livraison & SAV (5/5)
+            AccessPermission.MANAGE_CLIENTS,
+            AccessPermission.SEND_WHATSAPP_NOTIFICATION,
+            AccessPermission.MANAGE_DELIVERY_RUNS,
+            AccessPermission.HANDLE_SAV_CLAIMS,
+            AccessPermission.REPRINT_CLIENT_RECEIPT,
+            // Administration, RH & Sécurité (1/5 — paramètres agence & imprimante uniquement)
+            AccessPermission.CONFIGURE_PRINTER_AND_AGENCY
         )
 
         WorkspaceRole.CAISSIER -> setOf(
-            AccessPermission.VIEW_ORDERS,
             AccessPermission.CREATE_ORDER,
+            AccessPermission.EDIT_ORDER,
+            AccessPermission.APPLY_STANDARD_DISCOUNT,
+            AccessPermission.VIEW_RECEPTION_PHOTOS,
+            AccessPermission.REPRINT_GARMENT_LABEL,
             AccessPermission.COLLECT_PAYMENT,
-            AccessPermission.USE_POS,
-            AccessPermission.VIEW_INVOICES,
-            AccessPermission.MANAGE_QUOTES,
-            AccessPermission.VIEW_CLIENTS,
-            AccessPermission.EDIT_CLIENTS,
-            AccessPermission.MANAGE_CLAIMS
+            AccessPermission.MANAGE_CASH_REGISTER_Z,
+            AccessPermission.MANAGE_CLIENTS,
+            AccessPermission.SEND_WHATSAPP_NOTIFICATION,
+            AccessPermission.HANDLE_SAV_CLAIMS,
+            AccessPermission.REPRINT_CLIENT_RECEIPT
         )
 
         WorkspaceRole.OPERATEUR -> setOf(
-            AccessPermission.VIEW_ORDERS,
             AccessPermission.ADVANCE_PRODUCTION,
-            AccessPermission.VIEW_STOCKS,
-            AccessPermission.EDIT_STOCKS
+            AccessPermission.VIEW_RECEPTION_PHOTOS,
+            AccessPermission.REPRINT_GARMENT_LABEL
         )
 
         WorkspaceRole.CONTROLE_QUALITE -> setOf(
-            AccessPermission.VIEW_ORDERS,
             AccessPermission.ADVANCE_PRODUCTION,
             AccessPermission.VALIDATE_QUALITY,
-            AccessPermission.MANAGE_CLAIMS,
-            AccessPermission.USE_AI_ASSISTANT
+            AccessPermission.RETURN_FOR_REWORK,
+            AccessPermission.VIEW_RECEPTION_PHOTOS,
+            AccessPermission.REPRINT_GARMENT_LABEL,
+            AccessPermission.HANDLE_SAV_CLAIMS
         )
 
         WorkspaceRole.LIVREUR -> setOf(
-            AccessPermission.VIEW_DELIVERIES,
-            AccessPermission.DISPATCH_DELIVERIES
+            AccessPermission.MANAGE_DELIVERY_RUNS,
+            AccessPermission.SEND_WHATSAPP_NOTIFICATION
         )
     }
 
     fun requiredPermissionForRoute(route: String): AccessPermission? = when (route) {
-        "dashboard", "help", "client_portal" -> null
-        "orders", "order_detail", "workshop_tracker" -> AccessPermission.VIEW_ORDERS
+        "dashboard", "help", "client_portal", "more" -> null
+        "orders" -> AccessPermission.EDIT_ORDER
+        "order_detail" -> AccessPermission.EDIT_ORDER
+        "workshop_tracker" -> AccessPermission.ADVANCE_PRODUCTION
         "new_order" -> AccessPermission.CREATE_ORDER
-        "pos_cash" -> AccessPermission.USE_POS
-        "invoices" -> AccessPermission.VIEW_INVOICES
-        "quotes" -> AccessPermission.MANAGE_QUOTES
-        "clients" -> AccessPermission.VIEW_CLIENTS
-        "marketing" -> AccessPermission.MANAGE_MARKETING
+        "pos_cash" -> AccessPermission.COLLECT_PAYMENT
+        "invoices" -> AccessPermission.REPRINT_CLIENT_RECEIPT
+        "quotes" -> AccessPermission.CREATE_ORDER
+        "clients" -> AccessPermission.MANAGE_CLIENTS
+        "marketing" -> AccessPermission.SEND_WHATSAPP_NOTIFICATION
         "catalog" -> AccessPermission.MANAGE_CATALOG
-        "finance" -> AccessPermission.VIEW_ACCOUNTING_SYSCOHADA
-        "stocks" -> AccessPermission.VIEW_STOCKS
-        "deliveries" -> AccessPermission.VIEW_DELIVERIES
-        "staff", "roles_rbac" -> AccessPermission.MANAGE_STAFF_AND_ROLES
-        "claims" -> AccessPermission.MANAGE_CLAIMS
-        "ai_assistant" -> AccessPermission.USE_AI_ASSISTANT
-        "reports" -> AccessPermission.VIEW_REPORTS
-        "saas_admin" -> AccessPermission.MANAGE_SAAS_ADMIN
-        "settings" -> AccessPermission.MANAGE_SETTINGS
-        "more" -> null
+        "finance" -> AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA
+        "stocks" -> AccessPermission.ADVANCE_PRODUCTION
+        "deliveries" -> AccessPermission.MANAGE_DELIVERY_RUNS
+        "staff" -> AccessPermission.MANAGE_USERS_AND_ROLES
+        "roles_rbac" -> AccessPermission.EDIT_PRIVILEGE_MATRIX
+        "claims" -> AccessPermission.HANDLE_SAV_CLAIMS
+        "ai_assistant" -> AccessPermission.VIEW_RECEPTION_PHOTOS
+        "reports" -> AccessPermission.EXPORT_FINANCIAL_REPORTS
+        "saas_admin" -> AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA
+        "settings" -> AccessPermission.CONFIGURE_PRINTER_AND_AGENCY
         else -> null
     }
 }
@@ -332,33 +349,79 @@ data class ActiveRoleSession(
             else -> role.defaultScope
         }
 
+    /** Strictly false for OPERATEUR, CONTROLE_QUALITE, and LIVREUR (who only sees COD balance separately). */
     val canViewFinancialAmounts: Boolean
-        get() = has(AccessPermission.VIEW_FINANCIAL_KPIS) ||
-            has(AccessPermission.COLLECT_PAYMENT) ||
-            has(AccessPermission.VIEW_ACCOUNTING_SYSCOHADA)
+        get() = has(AccessPermission.VIEW_AGENCY_REVENUE) ||
+            has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA) ||
+            has(AccessPermission.COLLECT_PAYMENT)
+
+    /** True ONLY for drivers collecting unpaid COD balances on their assigned delivery runs. */
+    val canViewDeliveryCodAmount: Boolean
+        get() = role == WorkspaceRole.LIVREUR && has(AccessPermission.MANAGE_DELIVERY_RUNS)
+
+    /** Only Directeur Général and Gérant d'Agence can modify agency profile, 43-garment tariffs, and discount caps. */
+    val canEditAgencySettingsAndTariffs: Boolean
+        get() = has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY) || has(AccessPermission.MANAGE_CATALOG)
+
+    /** Directeur, Gérant d'Agence, and Caissier can configure the local Bluetooth thermal printer. */
+    val canManageLocalPrinter: Boolean
+        get() = has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY) ||
+            has(AccessPermission.MANAGE_CASH_REGISTER_Z) ||
+            has(AccessPermission.COLLECT_PAYMENT)
+
+    /** Directeur, Gérant d'Agence, and Caissier can execute daily Z de Caisse closing. */
+    val canRunCashClose: Boolean
+        get() = has(AccessPermission.MANAGE_CASH_REGISTER_Z)
+
+    /** Client receipts with FCFA prices are restricted to roles with explicit financial receipt privilege. */
+    val canPrintFinancialReceipt: Boolean
+        get() = has(AccessPermission.REPRINT_CLIENT_RECEIPT) && canViewFinancialAmounts
+
+    /** Workshop garment labels (without prices) are available to reception, cashier, workshop, and QC roles. */
+    val canPrintGarmentLabels: Boolean
+        get() = has(AccessPermission.REPRINT_GARMENT_LABEL)
+
+    /** Quality Control, Agency Manager, and Director can send a non-compliant garment back to rework. */
+    val canReworkGarment: Boolean
+        get() = has(AccessPermission.RETURN_FOR_REWORK)
+
+    /** Operational order visibility (Directeur, Gérant, Caissier, Opérateur, Qualité). */
+    val canViewOperationalOrders: Boolean
+        get() = has(AccessPermission.CREATE_ORDER) ||
+            has(AccessPermission.EDIT_ORDER) ||
+            has(AccessPermission.ADVANCE_PRODUCTION) ||
+            has(AccessPermission.VALIDATE_QUALITY)
 
     fun canTransitionOrderTo(target: OrderStatus): Boolean = when (target) {
         OrderStatus.READY -> has(AccessPermission.VALIDATE_QUALITY)
-        OrderStatus.DELIVERED -> has(AccessPermission.DISPATCH_DELIVERIES)
-        OrderStatus.CANCELLED -> has(AccessPermission.CREATE_ORDER) || has(AccessPermission.MANAGE_SETTINGS)
+        OrderStatus.DELIVERED -> has(AccessPermission.MANAGE_DELIVERY_RUNS)
+        OrderStatus.CANCELLED -> has(AccessPermission.CANCEL_DELETE_ORDER)
         OrderStatus.PICKED_UP -> has(AccessPermission.COLLECT_PAYMENT) || has(AccessPermission.CREATE_ORDER)
-        else -> has(AccessPermission.ADVANCE_PRODUCTION)
+        else -> has(AccessPermission.ADVANCE_PRODUCTION) || has(AccessPermission.RETURN_FOR_REWORK)
     }
 
     fun has(permission: AccessPermission): Boolean = permission in permissions
 
     fun canAccessRoute(route: String): Boolean {
-        if (route == "order_detail" && role == WorkspaceRole.LIVREUR) {
-            return has(AccessPermission.VIEW_DELIVERIES)
+        return when (route) {
+            "dashboard", "help", "client_portal", "more" -> true
+            "orders" -> canViewOperationalOrders
+            "order_detail" -> canViewOperationalOrders || canViewDeliveryCodAmount
+            "finance" -> has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA) || has(AccessPermission.VIEW_AGENCY_REVENUE)
+            "marketing" -> has(AccessPermission.SEND_WHATSAPP_NOTIFICATION) && has(AccessPermission.MANAGE_CLIENTS)
+            "settings" -> canEditAgencySettingsAndTariffs || canManageLocalPrinter || canRunCashClose
+            "roles_rbac" -> has(AccessPermission.EDIT_PRIVILEGE_MATRIX) || has(AccessPermission.VIEW_SECURITY_AUDIT_LOG)
+            else -> {
+                val req = RolePermissionMatrix.requiredPermissionForRoute(route) ?: return true
+                has(req)
+            }
         }
-        val req = RolePermissionMatrix.requiredPermissionForRoute(route) ?: return true
-        return has(req)
     }
 
     fun scopeLabel(): String = when {
         role == WorkspaceRole.LIVREUR -> "Tournées de $operatorName${isolatedAgency?.let { " · $it" } ?: ""}"
-        isolatedAgency != null -> "Entité isolée : $isolatedAgency"
-        else -> "Toutes les agences (Tenant isolé)"
+        isolatedAgency != null -> "Agence isolée : $isolatedAgency"
+        else -> "Toutes les agences (Multi-agences)"
     }
 }
 
@@ -409,7 +472,9 @@ object TenantDataScoper {
             else -> byAgency
         }
 
-        // Strict client-side redaction: never expose monetary values to non-financial roles
+        // Strict client-side redaction:
+        // - OPERATEUR & CONTROLE_QUALITE: ZERO financial data (all FCFA amounts zeroed).
+        // - LIVREUR: zero prices/totals/CA/discounts, keeping ONLY COD remainingAmount on unpaid delivery orders.
         return if (session.canViewFinancialAmounts) {
             roleFiltered
         } else {
@@ -420,6 +485,15 @@ object TenantDataScoper {
                         put("lineTotal", 0L)
                     }
                 }
+                val codOnlyRemaining = if (
+                    session.canViewDeliveryCodAmount &&
+                    order.paymentStatusEnum() != PaymentStatus.PAID &&
+                    order.remainingAmount > 0L
+                ) {
+                    order.remainingAmount
+                } else {
+                    0L
+                }
                 order.copy(
                     items = redactedItems,
                     subtotal = 0L,
@@ -429,7 +503,7 @@ object TenantDataScoper {
                     taxAmount = 0L,
                     totalAmount = 0L,
                     paidAmount = 0L,
-                    remainingAmount = 0L
+                    remainingAmount = codOnlyRemaining
                 )
             }
         }
@@ -439,9 +513,7 @@ object TenantDataScoper {
         transactions: List<AccountingEntry>,
         session: ActiveRoleSession
     ): List<AccountingEntry> {
-        val canSeeMoney = session.has(AccessPermission.VIEW_FINANCIAL_KPIS) ||
-            session.has(AccessPermission.VIEW_ACCOUNTING_SYSCOHADA) ||
-            session.has(AccessPermission.COLLECT_PAYMENT)
+        val canSeeMoney = session.canViewFinancialAmounts
         if (!canSeeMoney) return emptyList()
 
         val byAgency = if (session.isolatedAgency.isNullOrBlank()) {
@@ -452,8 +524,8 @@ object TenantDataScoper {
             }
         }
 
-        // Cashiers only see revenue/refund counter entries, never global company expenses/payroll
-        return if (session.role == WorkspaceRole.CAISSIER && !session.has(AccessPermission.VIEW_ACCOUNTING_SYSCOHADA)) {
+        // Cashiers only see counter collections & cash register Z entries, never global company expenses/payroll/SYSCOHADA
+        return if (session.role == WorkspaceRole.CAISSIER && !session.has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA)) {
             byAgency.filter { it.entryType == "REVENUE" || it.entryType == "CASH_OPEN" || it.entryType == "CASH_CLOSE" }
         } else {
             byAgency
@@ -466,8 +538,7 @@ object TenantDataScoper {
         session: ActiveRoleSession,
         allOrders: List<PressingOrder> = emptyList()
     ): List<ClientRecord> {
-        val scoped = if (!session.has(AccessPermission.VIEW_CLIENTS)) {
-            // Drivers only see clients belonging to their assigned deliveries
+        val scoped = if (!session.has(AccessPermission.MANAGE_CLIENTS)) {
             if (session.role == WorkspaceRole.LIVREUR) {
                 val allowedIds = scopedOrders.mapNotNull { it.clientId.takeIf { id -> id.isNotBlank() } }.toSet()
                 val allowedNames = scopedOrders.map { it.clientName.lowercase() }.toSet()
@@ -516,7 +587,7 @@ object TenantDataScoper {
                 it.agencyName.isBlank() || it.agencyName.equals(session.isolatedAgency, ignoreCase = true)
             }
         }
-        return if (session.has(AccessPermission.VIEW_SALARIES)) {
+        return if (session.has(AccessPermission.VIEW_HR_SALARIES)) {
             byAgency
         } else {
             byAgency.map { it.copy(monthlySalary = 0L, commissionRate = 0.0) }
@@ -527,7 +598,10 @@ object TenantDataScoper {
         stocks: List<StockItem>,
         session: ActiveRoleSession
     ): List<StockItem> {
-        if (!session.has(AccessPermission.VIEW_STOCKS)) return emptyList()
+        val canSeeStocks = session.has(AccessPermission.ADVANCE_PRODUCTION) ||
+            session.has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY) ||
+            session.has(AccessPermission.VIEW_AGENCY_REVENUE)
+        if (!canSeeStocks) return emptyList()
         return if (session.canViewFinancialAmounts) {
             stocks
         } else {
@@ -540,11 +614,125 @@ object TenantDataScoper {
         scopedOrders: List<PressingOrder>,
         session: ActiveRoleSession
     ): List<ClaimRecord> {
-        if (!session.has(AccessPermission.MANAGE_CLAIMS)) return emptyList()
+        if (!session.has(AccessPermission.HANDLE_SAV_CLAIMS)) return emptyList()
         if (session.isolatedAgency.isNullOrBlank()) return claims
         val orderNums = scopedOrders.map { it.orderNumber }.toSet()
         return claims.filter { it.orderNumber.isBlank() || it.orderNumber in orderNums }
     }
+}
+
+/**
+ * Pure analytics helpers for the 6 role-specialized dashboards (unit-testable, zero Android dependencies).
+ */
+data class AgencyPerformanceSummary(
+    val agencyName: String,
+    val revenueFcfa: Long,
+    val orderCount: Int,
+    val piecesCount: Long,
+    val lateCount: Int
+)
+
+data class GovernanceAlertsSnapshot(
+    val cashVariances: List<AccountingEntry>,
+    val exceptionalDiscountOrders: List<PressingOrder>,
+    val openClaims: List<ClaimRecord>,
+    val deniedAuditEventsCount: Int
+) {
+    val totalAlertCount: Int
+        get() = cashVariances.size + exceptionalDiscountOrders.size + openClaims.size + deniedAuditEventsCount
+}
+
+object RoleDashboardAnalytics {
+
+    fun computePunctualityRatePercent(orders: List<PressingOrder>, nowMillis: Long = System.currentTimeMillis()): Int {
+        val activeOrDone = orders.filter { it.orderStatusEnum() != OrderStatus.CANCELLED }
+        if (activeOrDone.isEmpty()) return 100
+        val lateCount = activeOrDone.count { it.isLate(nowMillis) }
+        return (((activeOrDone.size - lateCount).toDouble() / activeOrDone.size.toDouble()) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
+    }
+
+    fun computeAgencyComparison(
+        orders: List<PressingOrder>,
+        configuredAgencies: List<String>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): List<AgencyPerformanceSummary> {
+        val agencyNames = (configuredAgencies + orders.map { it.agencyName })
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .ifEmpty { listOf("Agence Principale") }
+
+        return agencyNames.map { agency ->
+            val agencyOrders = orders.filter {
+                it.orderStatusEnum() != OrderStatus.CANCELLED &&
+                    (it.agencyName.equals(agency, ignoreCase = true) ||
+                        (it.agencyName.isBlank() && agency == agencyNames.first()))
+            }
+            AgencyPerformanceSummary(
+                agencyName = agency,
+                revenueFcfa = agencyOrders.sumOf { it.totalAmount },
+                orderCount = agencyOrders.size,
+                piecesCount = agencyOrders.sumOf { it.itemCount.coerceAtLeast(1L) },
+                lateCount = agencyOrders.count { it.isLate(nowMillis) }
+            )
+        }.sortedByDescending { it.revenueFcfa }
+    }
+
+    fun detectGovernanceAlerts(
+        orders: List<PressingOrder>,
+        transactions: List<AccountingEntry>,
+        claims: List<ClaimRecord>,
+        auditLog: List<RoleAuditEvent>,
+        maxCashierDiscountPercent: Double
+    ): GovernanceAlertsSnapshot {
+        val cashVariances = transactions.filter { entry ->
+            entry.entryType == "CASH_CLOSE" &&
+                (entry.label.contains("Manquant", ignoreCase = true) ||
+                    entry.label.contains("Excédent", ignoreCase = true))
+        }
+        val exceptionalDiscounts = orders.filter { ord ->
+            ord.status != OrderStatus.CANCELLED.name &&
+                ord.subtotal > 0L &&
+                ord.discountAmount > 0L &&
+                ((ord.discountAmount.toDouble() / ord.subtotal.toDouble()) * 100.0) > maxCashierDiscountPercent + 0.01
+        }
+        val openClaims = claims.filter { it.status != "RESOLVED" }
+        val deniedCount = auditLog.count { !it.allowed }
+        return GovernanceAlertsSnapshot(
+            cashVariances = cashVariances,
+            exceptionalDiscountOrders = exceptionalDiscounts,
+            openClaims = openClaims,
+            deniedAuditEventsCount = deniedCount
+        )
+    }
+
+    fun computeQcConformityPercent(orders: List<PressingOrder>): Int {
+        val checkedOrRework = orders.filter {
+            it.orderStatusEnum() in listOf(
+                OrderStatus.READY,
+                OrderStatus.PICKED_UP,
+                OrderStatus.DELIVERED,
+                OrderStatus.QUALITY_CHECK
+            ) || it.statusHistory.any { h -> h.contains("Reprise", ignoreCase = true) }
+        }
+        if (checkedOrRework.isEmpty()) return 100
+        val reworkCount = checkedOrRework.count { ord ->
+            ord.statusHistory.any { it.contains("Reprise", ignoreCase = true) }
+        }
+        return (((checkedOrRework.size - reworkCount).toDouble() / checkedOrRework.size.toDouble()) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
+    }
+
+    fun computeDriverCodTotal(orders: List<PressingOrder>): Long =
+        orders.filter {
+            it.orderStatusEnum() != OrderStatus.DELIVERED &&
+                it.orderStatusEnum() != OrderStatus.CANCELLED &&
+                it.paymentStatusEnum() != PaymentStatus.PAID &&
+                it.remainingAmount > 0L
+        }.sumOf { it.remainingAmount }
 }
 
 /**
@@ -581,7 +769,6 @@ object RoleSessionResolver {
         }
         val cleanName = userDisplayName.trim()
 
-        // Company owner check: if authenticated email matches company's official owner email, grant Directeur
         val ownerEmail = company?.email?.trim()?.lowercase().orEmpty()
         val isExplicitCompanyOwner = ownerEmail.isNotBlank() && cleanEmail.isNotBlank() && cleanEmail == ownerEmail
 
@@ -589,13 +776,11 @@ object RoleSessionResolver {
             null
         } else {
             val activeStaff = employees.filter { it.active }
-            // 1. Exact phone match against Firestore employees
             val byPhone = if (effectivePhone.isNotBlank()) {
                 activeStaff.firstOrNull { emp -> emp.phone.isNotBlank() && phonesMatch(emp.phone, effectivePhone) }
             } else {
                 null
             }
-            // 2. Match by full name if employee record shares the authenticated profile name (and is non-blank)
             val byName = if (byPhone == null && cleanName.length >= 3) {
                 activeStaff.firstOrNull { emp ->
                     emp.fullName.trim().equals(cleanName, ignoreCase = true)
@@ -636,4 +821,3 @@ object RoleSessionResolver {
         )
     }
 }
-

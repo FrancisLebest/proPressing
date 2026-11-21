@@ -1,20 +1,26 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.CashCloseSummary
+import com.example.core.NetworkConnectivityObserver
+import com.example.core.PressingNotificationManager
 import com.example.core.formatMoney
 import com.example.core.nowFormatted
 import com.example.data.AccessPermission
 import com.example.data.AccountingEntry
 import com.example.data.ActiveRoleSession
 import com.example.data.AiRepository
+import com.example.data.AuditLogRecord
 import com.example.data.ClaimRecord
 import com.example.data.ClientRecord
 import com.example.data.CompanyConfig
 import com.example.data.DefaultCatalogTemplates
 import com.example.data.EmployeeRecord
+import com.example.data.FcmTokenRecord
 import com.example.data.GarmentAiAnalysis
 import com.example.data.GarmentWorkshopStatus
 import com.example.data.OrderGarmentItem
@@ -23,6 +29,7 @@ import com.example.data.OrderStatus
 import com.example.data.PaymentMethod
 import com.example.data.PressingOrder
 import com.example.data.PressingRepository
+import com.example.data.PushNotificationRecord
 import com.example.data.RoleAuditEvent
 import com.example.data.RolePermissionMatrix
 import com.example.data.RoleSessionResolver
@@ -30,6 +37,8 @@ import com.example.data.ServiceItem
 import com.example.data.StockItem
 import com.example.data.TenantDataScoper
 import com.example.data.WorkspaceRole
+import com.example.data.local.OfflineOrderEntity
+import com.example.data.local.OfflineSyncRepository
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +48,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -74,7 +84,10 @@ class PressingViewModel(
     val currentUserId: String,
     val currentUserEmail: String = "",
     val currentUserPhone: String = "",
-    val currentUserName: String = ""
+    val currentUserName: String = "",
+    private val appContext: Context? = null,
+    private val offlineSyncRepository: OfflineSyncRepository? = null,
+    private val connectivityObserver: NetworkConnectivityObserver? = null
 ) : ViewModel() {
 
     private val safeUserDisplayName: String = sanitizeOperatorName(currentUserName, fallback = "")
@@ -134,8 +147,65 @@ class PressingViewModel(
     val clientsState: StateFlow<UiState<List<ClientRecord>>> =
         repository.observeClients(currentUserId).toUiState("clients")
 
-    val ordersState: StateFlow<UiState<List<PressingOrder>>> =
+    // --- ROOM OFFLINE CACHE & NETWORK CONNECTIVITY ---
+    val isOnline: StateFlow<Boolean> =
+        (connectivityObserver?.observeOnlineStatus() ?: flowOf(true))
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = connectivityObserver?.isCurrentlyOnline() ?: true
+            )
+
+    val pendingOfflineOrders: StateFlow<List<OfflineOrderEntity>> =
+        (offlineSyncRepository?.observePendingOrders(currentUserId) ?: flowOf(emptyList()))
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    private val _isSyncingOffline = MutableStateFlow(false)
+    val isSyncingOffline: StateFlow<Boolean> = _isSyncingOffline.asStateFlow()
+
+    // --- FCM PUSH NOTIFICATIONS STATE ---
+    private val _fcmTopics = MutableStateFlow<List<String>>(emptyList())
+    val fcmTopics: StateFlow<List<String>> = _fcmTopics.asStateFlow()
+
+    val pushNotificationsState: StateFlow<List<PushNotificationRecord>> =
+        repository.observePushNotifications(currentUserId)
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    private val remoteOrdersState: StateFlow<UiState<List<PressingOrder>>> =
         repository.observeOrders(currentUserId).toUiState("commandes")
+
+    /** Merges cloud Firestore orders with locally cached Room pending orders so cashiers see them immediately offline. */
+    val ordersState: StateFlow<UiState<List<PressingOrder>>> =
+        combine(remoteOrdersState, pendingOfflineOrders) { remoteUi, localPending ->
+            val localAsOrders = localPending.map { it.toPressingOrder() }
+            when (remoteUi) {
+                is UiState.Success -> {
+                    val remoteNumbers = remoteUi.data.map { it.orderNumber }.toSet()
+                    val uniqueLocal = localAsOrders.filter { it.orderNumber !in remoteNumbers }
+                    UiState.Success(uniqueLocal + remoteUi.data)
+                }
+                is UiState.Error -> {
+                    if (localAsOrders.isNotEmpty()) UiState.Success(localAsOrders) else remoteUi
+                }
+                UiState.Loading -> {
+                    if (localAsOrders.isNotEmpty()) UiState.Success(localAsOrders) else UiState.Loading
+                }
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            initialValue = UiState.Loading
+        )
 
     val transactionsState: StateFlow<UiState<List<AccountingEntry>>> =
         repository.observeTransactions(currentUserId).toUiState("comptabilité")
@@ -165,19 +235,52 @@ class PressingViewModel(
     )
     val activeRoleSession: StateFlow<ActiveRoleSession> = _activeRoleSession.asStateFlow()
 
-    private val _auditLog = MutableStateFlow(
+    private val _localAuditLog = MutableStateFlow(
         listOf(
             RoleAuditEvent(
                 timestampLabel = nowFormatted(),
                 actor = sanitizeOperatorName(currentUserName, "Directeur Général"),
                 roleLabel = WorkspaceRole.DIRECTEUR.shortTitleFr,
-                scopeLabel = "Espace isolé (Multi-agences)",
+                scopeLabel = "Multi-agences",
                 action = "Ouverture de session sécurisée",
                 allowed = true
             )
         )
     )
-    val auditLog: StateFlow<List<RoleAuditEvent>> = _auditLog.asStateFlow()
+
+    private val remoteAuditLogsState: StateFlow<List<RoleAuditEvent>> =
+        repository.observeAuditLogs(currentUserId)
+            .map { records ->
+                records.map { rec ->
+                    val ts = rec.createdAt?.toDate()?.let {
+                        java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.FRANCE).format(it)
+                    } ?: nowFormatted()
+                    RoleAuditEvent(
+                        timestampLabel = ts,
+                        actor = rec.actor.ifBlank { "Utilisateur" },
+                        roleLabel = rec.roleLabel.ifBlank { "Opérateur" },
+                        scopeLabel = rec.scopeLabel.ifBlank { "Agence" },
+                        action = rec.action,
+                        allowed = rec.allowed
+                    )
+                }
+            }
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    val auditLog: StateFlow<List<RoleAuditEvent>> = combine(_localAuditLog, remoteAuditLogsState) { local, remote ->
+        (local + remote)
+            .distinctBy { "${it.actor}|${it.action}|${it.allowed}" }
+            .take(50)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+        initialValue = _localAuditLog.value
+    )
 
     init {
         // 1. Immediate one-shot profile lookup right after login so role & agency bind immediately
@@ -212,7 +315,21 @@ class PressingViewModel(
                 applyResolvedSession(resolved)
             }
         }
+
+        // 3. Automatic Room -> Firestore synchronization as soon as internet connectivity returns
+        if (offlineSyncRepository != null) {
+            viewModelScope.launch {
+                combine(isOnline, pendingOfflineOrders) { online, pending -> online to pending.size }
+                    .collect { (online, pendingCount) ->
+                        if (online && pendingCount > 0 && !_isSyncingOffline.value) {
+                            syncPendingOfflineOrders(autoTriggered = true)
+                        }
+                    }
+            }
+        }
     }
+
+    private var lastRegisteredFcmKey: String = ""
 
     private fun applyResolvedSession(resolved: ActiveRoleSession) {
         val cleanResolved = resolved.copy(
@@ -225,6 +342,69 @@ class PressingViewModel(
                 "Profil rattaché automatiquement : ${cleanResolved.role.labelFr} (${cleanResolved.isolatedAgency ?: "Multi-agences"})",
                 allowed = true
             )
+        }
+        // Register FCM device token & role/agency topics once per resolved role+agency
+        val fcmKey = "${cleanResolved.role.name}|${cleanResolved.isolatedAgency.orEmpty()}"
+        if (appContext != null && fcmKey != lastRegisteredFcmKey) {
+            lastRegisteredFcmKey = fcmKey
+            PressingNotificationManager.registerFcmTokenAndTopics(
+                context = appContext,
+                role = cleanResolved.role,
+                agencyName = cleanResolved.isolatedAgency
+            ) { token, topics ->
+                _fcmTopics.value = topics
+                viewModelScope.launch {
+                    repository.saveFcmToken(
+                        currentUserId,
+                        FcmTokenRecord(
+                            token = token,
+                            role = cleanResolved.role.name,
+                            agencyName = cleanResolved.isolatedAgency.orEmpty(),
+                            topics = topics
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun syncPendingOfflineOrders(autoTriggered: Boolean = false) {
+        val syncRepo = offlineSyncRepository ?: return
+        if (_isSyncingOffline.value) return
+        if (connectivityObserver != null && !connectivityObserver.isCurrentlyOnline()) {
+            if (!autoTriggered) {
+                _feedbackMessage.value = "Toujours hors-ligne : les commandes restent sécurisées dans le cache Room."
+            }
+            return
+        }
+        viewModelScope.launch {
+            _isSyncingOffline.value = true
+            val batch = runCatching { syncRepo.syncPendingOrders(currentUserId) }
+                .getOrDefault(com.example.data.local.OfflineSyncBatchResult())
+            _isSyncingOffline.value = false
+            if (batch.syncedCount > 0) {
+                recordAudit(
+                    "Synchronisation auto Room → Cloud : ${batch.syncedCount} commande(s) transmise(s)",
+                    allowed = true
+                )
+                appContext?.let {
+                    PressingNotificationManager.showOfflineSyncCompletedNotification(it, batch.syncedCount)
+                }
+                repository.dispatchPushNotificationRecord(
+                    currentUserId,
+                    PushNotificationRecord(
+                        eventType = PressingNotificationManager.TYPE_OFFLINE_SYNCED,
+                        targetRole = "CAISSIER",
+                        agencyName = _activeRoleSession.value.isolatedAgency.orEmpty(),
+                        orderNumber = batch.syncedOrderNumbers.firstOrNull().orEmpty(),
+                        title = "Synchronisation hors-ligne terminée",
+                        body = "${batch.syncedCount} commande(s) enregistrée(s) hors-ligne synchronisée(s) vers Firestore."
+                    )
+                )
+                _feedbackMessage.value = "${batch.syncedCount} commande(s) hors-ligne synchronisée(s) avec succès."
+            } else if (!autoTriggered && batch.failedCount > 0) {
+                _feedbackMessage.value = "Synchronisation partielle : ${batch.failedCount} commande(s) en attente de réseau stable."
+            }
         }
     }
 
@@ -240,7 +420,12 @@ class PressingViewModel(
     private val _aiAdvisorState = MutableStateFlow<AiStreamState>(AiStreamState.Idle)
     val aiAdvisorState: StateFlow<AiStreamState> = _aiAdvisorState.asStateFlow()
 
-    private fun recordAudit(action: String, allowed: Boolean = true) {
+    private fun recordAudit(
+        action: String,
+        allowed: Boolean = true,
+        route: String = "",
+        persistToFirestore: Boolean = !allowed
+    ) {
         val session = _activeRoleSession.value
         val event = RoleAuditEvent(
             timestampLabel = nowFormatted(),
@@ -250,13 +435,39 @@ class PressingViewModel(
             action = action,
             allowed = allowed
         )
-        _auditLog.update { (listOf(event) + it).take(30) }
+        _localAuditLog.update { (listOf(event) + it).take(40) }
+        if (persistToFirestore) {
+            viewModelScope.launch {
+                repository.logAuditEvent(
+                    currentUserId,
+                    AuditLogRecord(
+                        actor = session.operatorName,
+                        roleLabel = session.role.shortTitleFr,
+                        scopeLabel = session.isolatedAgency ?: "Multi-agences",
+                        action = action,
+                        route = route,
+                        allowed = allowed
+                    )
+                )
+            }
+        }
+    }
+
+    /** Logs an unauthorized direct navigation attempt to Firestore audit_logs. */
+    fun logUnauthorizedNavigation(route: String, requiredPermission: AccessPermission?) {
+        val permLabel = requiredPermission?.labelFr ?: "Module restreint"
+        recordAudit(
+            action = "Accès bloqué vers « $route » (privilège requis : $permLabel)",
+            allowed = false,
+            route = route,
+            persistToFirestore = true
+        )
     }
 
     private fun requirePermission(permission: AccessPermission, actionLabel: String): Boolean {
         val session = _activeRoleSession.value
         if (session.has(permission)) return true
-        recordAudit("Refus : $actionLabel (${permission.labelFr})", allowed = false)
+        recordAudit("Refus : $actionLabel (${permission.labelFr})", allowed = false, persistToFirestore = true)
         _feedbackMessage.value = "Action bloquée : privilège « ${permission.labelFr} » requis."
         return false
     }
@@ -265,28 +476,30 @@ class PressingViewModel(
 
     fun selectIsolatedAgency(agency: String?) {
         val current = _activeRoleSession.value
-        if (current.role != WorkspaceRole.DIRECTEUR && agency.isNullOrBlank()) {
-            recordAudit("Tentative vue multi-agences refusée", allowed = false)
-            _feedbackMessage.value = "Ce rôle reste isolé sur une seule agence."
+        if (current.role != WorkspaceRole.DIRECTEUR) {
+            recordAudit("Tentative changement périmètre agence refusée", allowed = false, persistToFirestore = true)
+            _feedbackMessage.value = "Ce rôle reste strictement isolé sur son agence d'affectation."
             return
         }
         _activeRoleSession.update { it.copy(isolatedAgency = agency?.takeIf { a -> a.isNotBlank() }) }
-        recordAudit("Périmètre isolé : ${agency?.takeIf { it.isNotBlank() } ?: "Toutes agences"}", allowed = true)
+        recordAudit("Filtre agence Direction : ${agency?.takeIf { it.isNotBlank() } ?: "Toutes les agences"}", allowed = true)
         _feedbackMessage.value = if (agency.isNullOrBlank()) {
-            "Vue multi-agences activée (tenant isolé)."
+            "Vue multi-agences activée."
         } else {
-            "Données isolées sur : $agency"
+            "Tableau de bord filtré sur : $agency"
         }
     }
 
     fun toggleRolePermission(role: WorkspaceRole, permission: AccessPermission) {
-        if (_activeRoleSession.value.role != WorkspaceRole.DIRECTEUR) {
-            recordAudit("Modification droits refusée (${role.shortTitleFr})", allowed = false)
+        if (!_activeRoleSession.value.has(AccessPermission.EDIT_PRIVILEGE_MATRIX)) {
+            recordAudit("Modification matrice privilèges refusée (${role.shortTitleFr})", allowed = false, persistToFirestore = true)
             _feedbackMessage.value = "Seul le Directeur Général peut modifier la matrice des privilèges."
             return
         }
-        if (role == WorkspaceRole.DIRECTEUR && permission == AccessPermission.MANAGE_STAFF_AND_ROLES) {
-            _feedbackMessage.value = "Le droit d'administration des rôles reste verrouillé pour le Directeur."
+        if (role == WorkspaceRole.DIRECTEUR &&
+            (permission == AccessPermission.EDIT_PRIVILEGE_MATRIX || permission == AccessPermission.MANAGE_USERS_AND_ROLES)
+        ) {
+            _feedbackMessage.value = "Ce privilège critique d'administration reste verrouillé pour le Directeur."
             return
         }
         var grantedNow = false
@@ -335,12 +548,69 @@ class PressingViewModel(
     }
 
     fun saveCompanyConfig(config: CompanyConfig, silent: Boolean = false, onDone: () -> Unit = {}) {
+        val session = _activeRoleSession.value
+        val allowed = session.canEditAgencySettingsAndTariffs || session.canManageLocalPrinter || !config.setupCompleted
+        if (!allowed) {
+            recordAudit("Refus modification paramètres entreprise", allowed = false)
+            _feedbackMessage.value = "Action bloquée : accès réservé à la direction ou au gérant d'agence."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.saveCompanyConfig(currentUserId, config)
             _isBusy.value = false
-            if (!silent) showResult(res, "Configuration entreprise enregistrée.")
+            if (!silent) showResult(res, "Paramètres agence enregistrés.")
             if (res.isSuccess) onDone()
+        }
+    }
+
+    fun recordDailyCashCloseZ(
+        company: CompanyConfig,
+        summary: CashCloseSummary,
+        justification: String,
+        onDone: () -> Unit = {}
+    ) {
+        val session = _activeRoleSession.value
+        if (!session.canRunCashClose) {
+            recordAudit("Refus clôture Z de caisse", allowed = false)
+            _feedbackMessage.value = "Action bloquée : clôture de caisse réservée au Caissier, Gérant ou Directeur."
+            return
+        }
+        if (summary.requiresJustification && justification.trim().length < 5) {
+            _feedbackMessage.value = "Une justification détaillée est obligatoire lorsque l'écart de caisse est non nul."
+            return
+        }
+        viewModelScope.launch {
+            _isBusy.value = true
+            val varianceText = when {
+                summary.isBalanced -> "Écart 0"
+                summary.isSurplus -> "Excédent +${summary.variance}"
+                else -> "Manquant ${summary.variance}"
+            }
+            val label = buildString {
+                append("Clôture Z ${summary.dateKey} (${summary.agencyName}) · $varianceText")
+                if (justification.isNotBlank()) append(" · Justif: ${justification.trim()}")
+            }.take(200)
+
+            val entry = AccountingEntry(
+                reference = "Z-${summary.dateKey.replace("-", "")}-${System.currentTimeMillis() % 1000}",
+                entryType = "CASH_CLOSE",
+                category = "Clôture Z Caisse",
+                syscohadaAccount = "571",
+                label = label,
+                amount = summary.countedCash.coerceAtLeast(0L),
+                paymentMethod = PaymentMethod.ESPECES.name,
+                counterparty = session.operatorName,
+                agencyName = summary.agencyName
+            )
+            val entryRes = repository.addAccountingEntry(currentUserId, entry)
+            if (entryRes.isSuccess) {
+                repository.saveCompanyConfig(currentUserId, company.copy(lastCashCloseDate = summary.dateKey))
+                recordAudit("Clôture Z validée (${summary.dateKey} · $varianceText)", allowed = true)
+            }
+            _isBusy.value = false
+            showResult(entryRes, "Clôture Z de caisse validée et journée verrouillée.")
+            if (entryRes.isSuccess) onDone()
         }
     }
 
@@ -376,7 +646,7 @@ class PressingViewModel(
     }
 
     fun saveClient(client: ClientRecord, onCreated: (String) -> Unit = {}) {
-        if (!requirePermission(AccessPermission.EDIT_CLIENTS, "Enregistrer un client")) return
+        if (!requirePermission(AccessPermission.MANAGE_CLIENTS, "Enregistrer un client")) return
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.saveClient(currentUserId, client)
@@ -394,7 +664,7 @@ class PressingViewModel(
     }
 
     fun deleteClient(clientId: String) {
-        if (!requirePermission(AccessPermission.DELETE_CLIENTS, "Supprimer un client")) return
+        if (!requirePermission(AccessPermission.CANCEL_DELETE_ORDER, "Supprimer un client")) return
         viewModelScope.launch {
             val res = repository.deleteClient(currentUserId, clientId)
             showResult(res, "Client supprimé.")
@@ -427,6 +697,38 @@ class PressingViewModel(
         if (!requirePermission(AccessPermission.CREATE_ORDER, "Créer une commande")) return
         viewModelScope.launch {
             _isBusy.value = true
+            val offlineNow = connectivityObserver != null && !connectivityObserver.isCurrentlyOnline()
+            if (offlineNow && offlineSyncRepository != null) {
+                val localEntity = offlineSyncRepository.enqueueOrder(
+                    userId = currentUserId,
+                    orderNumber = orderNumber,
+                    agencyName = agencyName,
+                    clientId = clientId,
+                    clientName = clientName,
+                    clientPhone = clientPhone,
+                    clientAddress = clientAddress,
+                    priority = priority,
+                    items = items,
+                    discountAmount = discountAmount,
+                    expressFee = expressFee,
+                    deliveryFee = deliveryFee,
+                    taxAmount = taxAmount,
+                    paidAmount = paidAmount,
+                    paymentMethod = paymentMethod,
+                    deliveryRequested = deliveryRequested,
+                    deliveryZone = deliveryZone,
+                    assignedEmployee = assignedEmployee,
+                    clientSignatureName = clientSignatureName,
+                    observations = observations,
+                    dueDateMillis = dueDateMillis
+                )
+                _isBusy.value = false
+                recordAudit("Commande $orderNumber mise en cache local Room (hors-ligne)", allowed = true, persistToFirestore = false)
+                _feedbackMessage.value = "Mode hors-ligne : $orderNumber enregistrée en cache local (sync auto au retour d'internet)."
+                onCreated(localEntity.localId)
+                return@launch
+            }
+
             val res = repository.createOrder(
                 userId = currentUserId,
                 orderNumber = orderNumber,
@@ -454,11 +756,70 @@ class PressingViewModel(
             res.fold(
                 onSuccess = { orderId ->
                     recordAudit("Création commande $orderNumber ($agencyName)", allowed = true)
+                    val totalPieces = items.sumOf { it.quantity.coerceAtLeast(1L) }
+                    val subtotal = items.sumOf { it.quantity.coerceAtLeast(1L) * it.unitPrice.coerceAtLeast(0L) }
+                    val totalNet = (subtotal - discountAmount.coerceIn(0L, subtotal) + expressFee + deliveryFee + taxAmount).coerceAtLeast(0L)
+                    val currency = (companyState.value as? UiState.Success)?.data?.currency ?: "FCFA"
+                    val totalLabel = formatMoney(totalNet, currency)
+                    // Dispatch FCM cashier notification outbox + local alert
+                    repository.dispatchPushNotificationRecord(
+                        currentUserId,
+                        PushNotificationRecord(
+                            eventType = PressingNotificationManager.TYPE_NEW_ORDER_CASHIER,
+                            targetRole = "CAISSIER",
+                            agencyName = agencyName,
+                            orderNumber = orderNumber,
+                            clientPhone = clientPhone,
+                            title = "Nouvelle commande · $orderNumber",
+                            body = "$clientName ($totalPieces pièce(s)) · $totalLabel · $agencyName"
+                        )
+                    )
+                    appContext?.let {
+                        PressingNotificationManager.showCashierNewOrderNotification(
+                            context = it,
+                            orderNumber = orderNumber,
+                            clientName = clientName,
+                            agencyName = agencyName,
+                            itemCount = totalPieces,
+                            totalLabel = totalLabel
+                        )
+                    }
                     _feedbackMessage.value = "Commande $orderNumber créée et comptabilisée."
                     onCreated(orderId)
                 },
                 onFailure = { e ->
-                    _feedbackMessage.value = sanitizeErrorMessage(e, "Échec de création de commande.")
+                    val isNetworkIssue = e is FirebaseFirestoreException &&
+                        (e.code == FirebaseFirestoreException.Code.UNAVAILABLE ||
+                            e.code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
+                    if (isNetworkIssue && offlineSyncRepository != null) {
+                        val localEntity = offlineSyncRepository.enqueueOrder(
+                            userId = currentUserId,
+                            orderNumber = orderNumber,
+                            agencyName = agencyName,
+                            clientId = clientId,
+                            clientName = clientName,
+                            clientPhone = clientPhone,
+                            clientAddress = clientAddress,
+                            priority = priority,
+                            items = items,
+                            discountAmount = discountAmount,
+                            expressFee = expressFee,
+                            deliveryFee = deliveryFee,
+                            taxAmount = taxAmount,
+                            paidAmount = paidAmount,
+                            paymentMethod = paymentMethod,
+                            deliveryRequested = deliveryRequested,
+                            deliveryZone = deliveryZone,
+                            assignedEmployee = assignedEmployee,
+                            clientSignatureName = clientSignatureName,
+                            observations = observations,
+                            dueDateMillis = dueDateMillis
+                        )
+                        _feedbackMessage.value = "Réseau instable : $orderNumber sauvegardée en cache Room pour sync auto."
+                        onCreated(localEntity.localId)
+                    } else {
+                        _feedbackMessage.value = sanitizeErrorMessage(e, "Échec de création de commande.")
+                    }
                 }
             )
         }
@@ -485,8 +846,37 @@ class PressingViewModel(
             _isBusy.value = false
             if (res.isSuccess) {
                 recordAudit("Statut ${order.orderNumber} → ${newStatus.labelFr}", allowed = true)
+                if (newStatus == OrderStatus.READY) {
+                    notifyClientOrderReady(order)
+                }
             }
             showResult(res, "Statut mis à jour : ${newStatus.labelFr}")
+        }
+    }
+
+    private fun notifyClientOrderReady(order: PressingOrder) {
+        val agencyLabel = order.agencyName.ifBlank { "votre agence Pressing Pro" }
+        viewModelScope.launch {
+            repository.dispatchPushNotificationRecord(
+                currentUserId,
+                PushNotificationRecord(
+                    eventType = PressingNotificationManager.TYPE_ORDER_READY_CLIENT,
+                    targetRole = "CLIENT",
+                    agencyName = agencyLabel,
+                    orderNumber = order.orderNumber,
+                    clientPhone = order.clientPhone,
+                    title = "Vêtements prêts · ${order.orderNumber}",
+                    body = "Bonjour ${order.clientName}, vos vêtements sont prêts au retrait à $agencyLabel."
+                )
+            )
+        }
+        appContext?.let {
+            PressingNotificationManager.showClientGarmentReadyNotification(
+                context = it,
+                orderNumber = order.orderNumber,
+                clientName = order.clientName,
+                agencyName = agencyLabel
+            )
         }
     }
 
@@ -518,8 +908,45 @@ class PressingViewModel(
             _isBusy.value = false
             if (res.isSuccess) {
                 recordAudit("Atelier ${order.orderNumber} (article #${garmentIndex + 1}) → ${newWorkshopStatus.labelFr}", allowed = true)
+                if (newWorkshopStatus == GarmentWorkshopStatus.READY) {
+                    val parsed = order.parsedItems()
+                    val allReady = parsed.indices.all { idx ->
+                        idx == garmentIndex || parsed[idx].workshopStatusEnum() == GarmentWorkshopStatus.READY
+                    }
+                    if (allReady) {
+                        notifyClientOrderReady(order)
+                    }
+                }
             }
             showResult(res, "Article passé à : ${newWorkshopStatus.labelFr}")
+        }
+    }
+
+    fun returnOrderToRework(
+        order: PressingOrder,
+        targetStage: GarmentWorkshopStatus,
+        reason: String
+    ) {
+        if (!requirePermission(AccessPermission.RETURN_FOR_REWORK, "Renvoyer ${order.orderNumber} en reprise")) return
+        val session = _activeRoleSession.value
+        viewModelScope.launch {
+            _isBusy.value = true
+            val res = repository.returnOrderToRework(
+                userId = currentUserId,
+                order = order,
+                targetStage = targetStage,
+                reason = reason,
+                operatorName = session.operatorName
+            )
+            _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit(
+                    "Reprise qualité ${order.orderNumber} → ${targetStage.labelFr} (${reason.ifBlank { "Non conforme" }})",
+                    allowed = true,
+                    persistToFirestore = true
+                )
+            }
+            showResult(res, "Commande renvoyée en reprise (${targetStage.labelFr}).")
         }
     }
 
@@ -537,7 +964,7 @@ class PressingViewModel(
     }
 
     fun assignDelivery(order: PressingOrder, driverName: String, zone: String, markDelivered: Boolean = false) {
-        if (!requirePermission(AccessPermission.DISPATCH_DELIVERIES, "Gérer livraison ${order.orderNumber}")) return
+        if (!requirePermission(AccessPermission.MANAGE_DELIVERY_RUNS, "Gérer livraison ${order.orderNumber}")) return
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.assignDelivery(currentUserId, order, driverName, zone, markDelivered)
@@ -552,13 +979,42 @@ class PressingViewModel(
         }
     }
 
+    fun confirmDeliveryWithProof(
+        order: PressingOrder,
+        recipientName: String,
+        proofNote: String
+    ) {
+        if (!requirePermission(AccessPermission.MANAGE_DELIVERY_RUNS, "Valider livraison ${order.orderNumber}")) return
+        val session = _activeRoleSession.value
+        viewModelScope.launch {
+            _isBusy.value = true
+            val res = repository.confirmDeliveryWithProof(
+                userId = currentUserId,
+                order = order,
+                driverName = session.operatorName,
+                zone = order.deliveryZone.ifBlank { order.clientAddress.ifBlank { "Zone client" } },
+                recipientName = recipientName,
+                proofNote = proofNote
+            )
+            _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit(
+                    "Livraison validée avec preuve ${order.orderNumber} (reçu par ${recipientName.ifBlank { order.clientName }})",
+                    allowed = true,
+                    persistToFirestore = true
+                )
+            }
+            showResult(res, "Livraison confirmée et preuve enregistrée !")
+        }
+    }
+
     fun addAccountingEntry(entry: AccountingEntry, onDone: () -> Unit = {}) {
         val session = _activeRoleSession.value
         val allowed = session.has(AccessPermission.ADD_EXPENSE) ||
             (entry.entryType != "EXPENSE" && session.has(AccessPermission.COLLECT_PAYMENT))
         if (!allowed) {
-            recordAudit("Refus écriture comptable (${entry.entryType})", allowed = false)
-            _feedbackMessage.value = "Privilège « Saisir dépenses & écritures » requis."
+            recordAudit("Refus écriture comptable (${entry.entryType})", allowed = false, persistToFirestore = true)
+            _feedbackMessage.value = "Privilège « Saisir dépense caisse » requis."
             return
         }
         viewModelScope.launch {
@@ -574,7 +1030,13 @@ class PressingViewModel(
     }
 
     fun saveStockItem(item: StockItem, onDone: () -> Unit = {}) {
-        if (!requirePermission(AccessPermission.EDIT_STOCKS, "Modifier le stock")) return
+        val session = _activeRoleSession.value
+        val allowed = session.has(AccessPermission.ADVANCE_PRODUCTION) || session.has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY)
+        if (!allowed) {
+            recordAudit("Refus modification stock", allowed = false, persistToFirestore = true)
+            _feedbackMessage.value = "Action bloquée : droits atelier ou gérant requis."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.saveStockItem(currentUserId, item)
@@ -585,7 +1047,7 @@ class PressingViewModel(
     }
 
     fun deleteStockItem(stockId: String) {
-        if (!requirePermission(AccessPermission.EDIT_STOCKS, "Supprimer un article de stock")) return
+        if (!requirePermission(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY, "Supprimer un article de stock")) return
         viewModelScope.launch {
             val res = repository.deleteStockItem(currentUserId, stockId)
             showResult(res, "Article supprimé du stock.")
@@ -593,7 +1055,7 @@ class PressingViewModel(
     }
 
     fun saveEmployee(emp: EmployeeRecord, onDone: () -> Unit = {}) {
-        if (!requirePermission(AccessPermission.MANAGE_STAFF_AND_ROLES, "Gérer le personnel")) return
+        if (!requirePermission(AccessPermission.MANAGE_USERS_AND_ROLES, "Gérer le personnel")) return
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.saveEmployee(currentUserId, emp)
@@ -604,7 +1066,7 @@ class PressingViewModel(
     }
 
     fun deleteEmployee(empId: String) {
-        if (!requirePermission(AccessPermission.MANAGE_STAFF_AND_ROLES, "Supprimer un employé")) return
+        if (!requirePermission(AccessPermission.MANAGE_USERS_AND_ROLES, "Supprimer un employé")) return
         viewModelScope.launch {
             val res = repository.deleteEmployee(currentUserId, empId)
             showResult(res, "Employé supprimé.")
@@ -612,7 +1074,7 @@ class PressingViewModel(
     }
 
     fun createClaim(claim: ClaimRecord, onDone: () -> Unit = {}) {
-        if (!requirePermission(AccessPermission.MANAGE_CLAIMS, "Créer une réclamation")) return
+        if (!requirePermission(AccessPermission.HANDLE_SAV_CLAIMS, "Créer une réclamation")) return
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.createClaim(currentUserId, claim)
@@ -623,7 +1085,7 @@ class PressingViewModel(
     }
 
     fun updateClaimStatus(claimId: String, status: String, severity: String, resolutionNote: String) {
-        if (!requirePermission(AccessPermission.MANAGE_CLAIMS, "Mettre à jour une réclamation")) return
+        if (!requirePermission(AccessPermission.HANDLE_SAV_CLAIMS, "Mettre à jour une réclamation")) return
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.updateClaimStatus(currentUserId, claimId, status, severity, resolutionNote)
@@ -676,10 +1138,10 @@ class PressingViewModel(
             appendLine("Entreprise : ${company?.companyName ?: "Pressing"} (${company?.city ?: "Abidjan"}, ${company?.country ?: "Côte d'Ivoire"})")
             appendLine("Rôle utilisateur : ${session.role.labelFr} · Périmètre isolé : ${session.scopeLabel()}")
             appendLine("Commandes du périmètre : ${orders.size} (En cours: ${orders.count { it.orderStatusEnum() !in listOf(OrderStatus.PICKED_UP, OrderStatus.DELIVERED, OrderStatus.CANCELLED) }}, En retard: $lateCount)")
-            if (session.has(AccessPermission.VIEW_CLIENTS)) {
+            if (session.has(AccessPermission.MANAGE_CLIENTS)) {
                 appendLine("Clients actifs : ${clients.size} (VIP: ${clients.count { it.category == "VIP" }})")
             }
-            if (session.has(AccessPermission.VIEW_FINANCIAL_KPIS)) {
+            if (session.has(AccessPermission.VIEW_AGENCY_REVENUE) || session.has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA)) {
                 val totalRevenue = transactions.filter { it.entryType == "REVENUE" }.sumOf { it.amount }
                 val totalExpenses = transactions.filter { it.entryType == "EXPENSE" || it.entryType == "REFUND" }.sumOf { it.amount }
                 val unpaidTotal = orders.filter { it.status != "CANCELLED" }.sumOf { it.remainingAmount }
@@ -690,11 +1152,11 @@ class PressingViewModel(
             } else {
                 appendLine("Données financières : CONFIDENTIELLES (ne jamais mentionner de chiffres financiers à ce rôle).")
             }
-            if (session.has(AccessPermission.VIEW_STOCKS)) {
+            if (session.has(AccessPermission.ADVANCE_PRODUCTION) || session.has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY)) {
                 appendLine("Stocks critiques (${lowStocks.size}) : ${lowStocks.joinToString { "${it.name} (${it.quantity} ${it.unit})" }.ifBlank { "Aucun" }}")
                 appendLine("Machines en maintenance/panne : ${brokenMachines.joinToString { it.name }.ifBlank { "Aucune" }}")
             }
-            if (session.has(AccessPermission.MANAGE_CLAIMS)) {
+            if (session.has(AccessPermission.HANDLE_SAV_CLAIMS)) {
                 appendLine("Réclamations ouvertes : ${claims.count { it.status != "RESOLVED" }}")
             }
         }

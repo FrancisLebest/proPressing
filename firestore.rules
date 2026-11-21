@@ -16,6 +16,43 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Optional custom-claim role enforcement:
+    // - Non-financial operational roles (OPERATEUR, CONTROLE_QUALITE, LIVREUR) cannot read salaries/accounting
+    //   nor mutate financial order fields, tariffs, or agency settings.
+    // - Only DIRECTEUR / GERANT_AGENCE (or owner session without restricted role claim) can modify tariffs & agency settings.
+    // - CAISSIER may run cash closing (Z) and update local thermal printer preferences only.
+    function hasRoleClaim() {
+      return isSignedIn() && ('role' in request.auth.token) && request.auth.token.role is string;
+    }
+
+    function isNonFinancialRole() {
+      return hasRoleClaim() && request.auth.token.role in ['OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR'];
+    }
+
+    function isAgencyAdminRole() {
+      return !hasRoleClaim() || request.auth.token.role in ['DIRECTEUR', 'GERANT_AGENCE'];
+    }
+
+    function isDirectorRole() {
+      return !hasRoleClaim() || request.auth.token.role == 'DIRECTEUR';
+    }
+
+    function isCashierRole() {
+      return hasRoleClaim() && request.auth.token.role == 'CAISSIER';
+    }
+
+    function hasAgencyClaim() {
+      return isSignedIn() && ('agency' in request.auth.token) &&
+        request.auth.token.agency is string &&
+        request.auth.token.agency.size() > 0;
+    }
+
+    // Strict server-side cross-agency isolation: when a staff token carries an agency claim,
+    // only DIRECTEUR can cross agencies; all agency-scoped roles are restricted to their exact agency.
+    function matchesAgencyClaim(docAgency) {
+      return isDirectorRole() || !hasAgencyClaim() || docAgency == request.auth.token.agency;
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -54,37 +91,23 @@ service cloud.firestore {
     function isValidCompanyConfig(data, userId) {
       return data.userId == userId &&
         data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 120 &&
-        isOptString(data, 'legalName', 120) &&
-        isOptString(data, 'rccm', 60) &&
-        isOptString(data, 'nif', 60) &&
-        isOptString(data, 'description', 500) &&
-        isOptString(data, 'phone', 30) &&
-        isOptString(data, 'whatsapp', 30) &&
-        isOptString(data, 'email', 120) &&
-        isOptString(data, 'country', 60) &&
-        isOptString(data, 'city', 80) &&
-        isOptString(data, 'commune', 80) &&
-        isOptString(data, 'address', 250) &&
-        (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90)) &&
-        (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180)) &&
         data.currency is string && data.currency.size() >= 1 && data.currency.size() <= 10 &&
-        (!('taxRatePercent' in data) || (data.taxRatePercent is number && data.taxRatePercent >= 0 && data.taxRatePercent <= 50)) &&
-        isOptString(data, 'openingHours', 120) &&
-        (!('standardDelayHours' in data) || (data.standardDelayHours is int && data.standardDelayHours >= 1 && data.standardDelayHours <= 720)) &&
-        (!('expressDelayHours' in data) || (data.expressDelayHours is int && data.expressDelayHours >= 1 && data.expressDelayHours <= 168)) &&
-        (!('expressSurchargePercent' in data) || (data.expressSurchargePercent is number && data.expressSurchargePercent >= 0 && data.expressSurchargePercent <= 200)) &&
         data.orderPrefix is string && data.orderPrefix.size() >= 1 && data.orderPrefix.size() <= 20 &&
-        isOptString(data, 'receiptFooter', 300) &&
-        data.receiptFormat is string && data.receiptFormat in ['THERMAL_58', 'THERMAL_80', 'A4_PDF'] &&
-        (!('acceptedPayments' in data) || (data.acceptedPayments is list && data.acceptedPayments.size() <= 10 && (data.acceptedPayments.size() == 0 || data.acceptedPayments[0] is string))) &&
-        (!('agencies' in data) || (data.agencies is list && data.agencies.size() <= 20 && (data.agencies.size() == 0 || data.agencies[0] is string))) &&
-        (!('smsNotificationsEnabled' in data) || data.smsNotificationsEnabled is bool) &&
-        (!('whatsappNotificationsEnabled' in data) || data.whatsappNotificationsEnabled is bool) &&
-        data.subscriptionPlan is string && data.subscriptionPlan in ['STARTER', 'BUSINESS', 'ENTERPRISE'] &&
-        data.subscriptionBilling is string && data.subscriptionBilling in ['MONTHLY', 'QUARTERLY', 'ANNUAL'] &&
-        data.subscriptionStatus is string && data.subscriptionStatus in ['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED'] &&
+        data.receiptFormat in ['THERMAL_58', 'THERMAL_80', 'A4_PDF'] &&
+        data.subscriptionPlan in ['STARTER', 'BUSINESS', 'ENTERPRISE'] &&
+        data.subscriptionBilling in ['MONTHLY', 'QUARTERLY', 'ANNUAL'] &&
+        data.subscriptionStatus in ['TRIAL', 'ACTIVE', 'GRACE', 'SUSPENDED'] &&
         data.setupStep is int && data.setupStep >= 1 && data.setupStep <= 10 &&
         data.setupCompleted is bool &&
+        (!('maxCashierDiscountPercent' in data) || (data.maxCashierDiscountPercent is number && data.maxCashierDiscountPercent >= 0 && data.maxCashierDiscountPercent <= 100)) &&
+        (!('corporateDiscountPercent' in data) || (data.corporateDiscountPercent is number && data.corporateDiscountPercent >= 0 && data.corporateDiscountPercent <= 100)) &&
+        (!('expressSurchargePercent' in data) || (data.expressSurchargePercent is number && data.expressSurchargePercent >= 0 && data.expressSurchargePercent <= 200)) &&
+        (!('ultraExpressSurchargePercent' in data) || (data.ultraExpressSurchargePercent is number && data.ultraExpressSurchargePercent >= 0 && data.ultraExpressSurchargePercent <= 300)) &&
+        (!('autoCutPaper' in data) || data.autoCutPaper is bool) &&
+        (!('autoPrintLabelsOnPayment' in data) || data.autoPrintLabelsOnPayment is bool) &&
+        (!('defaultPrinterName' in data) || (data.defaultPrinterName is string && data.defaultPrinterName.size() <= 100)) &&
+        (!('defaultPrinterAddress' in data) || (data.defaultPrinterAddress is string && data.defaultPrinterAddress.size() <= 40)) &&
+        (!('lastCashCloseDate' in data) || (data.lastCashCloseDate is string && data.lastCashCloseDate.size() <= 20)) &&
         isValidTimestamp(data.createdAt) &&
         isValidTimestamp(data.updatedAt);
     }
@@ -218,12 +241,48 @@ service cloud.firestore {
         isValidTimestamp(data.updatedAt);
     }
 
+    function isValidAuditLogRecord(data, userId) {
+      return data.userId == userId &&
+        data.actor is string && data.actor.size() >= 1 && data.actor.size() <= 100 &&
+        data.roleLabel is string && data.roleLabel.size() >= 1 && data.roleLabel.size() <= 60 &&
+        data.scopeLabel is string && data.scopeLabel.size() >= 1 && data.scopeLabel.size() <= 120 &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 240 &&
+        isOptString(data, 'route', 60) &&
+        data.allowed is bool &&
+        isValidTimestamp(data.createdAt);
+    }
+
+    function isValidFcmTokenRecord(data, userId) {
+      return data.userId == userId &&
+        data.token is string && data.token.size() >= 10 && data.token.size() <= 300 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 40 &&
+        isOptString(data, 'agencyName', 100) &&
+        data.topics is list && data.topics.size() <= 15 &&
+        data.platform is string && data.platform in ['ANDROID', 'IOS', 'WEB'] &&
+        isValidTimestamp(data.createdAt) &&
+        isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPushNotificationRecord(data, userId) {
+      return data.userId == userId &&
+        data.eventType is string && data.eventType in ['NEW_ORDER_CASHIER', 'ORDER_READY_CLIENT', 'OFFLINE_SYNCED'] &&
+        data.targetRole is string && data.targetRole.size() >= 1 && data.targetRole.size() <= 40 &&
+        isOptString(data, 'agencyName', 100) &&
+        isOptString(data, 'orderNumber', 40) &&
+        isOptString(data, 'clientPhone', 30) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 300 &&
+        data.delivered is bool &&
+        isValidTimestamp(data.createdAt);
+    }
+
     // --- MULTI-TENANT COMPANY ROOT & SUBCOLLECTIONS ---
     match /users/{userId} {
       allow get: if isOwner(userId) && isValidId(userId);
       allow list: if false;
 
       allow create: if isOwner(userId) &&
+        isAgencyAdminRole() &&
         isValidId(userId) &&
         incoming().keys().hasAll([
           'userId', 'companyName', 'currency', 'orderPrefix', 'receiptFormat',
@@ -235,7 +294,11 @@ service cloud.firestore {
           'phone', 'whatsapp', 'email', 'country', 'city', 'commune', 'address',
           'latitude', 'longitude', 'currency', 'taxRatePercent', 'openingHours',
           'standardDelayHours', 'expressDelayHours', 'expressSurchargePercent',
-          'orderPrefix', 'receiptFooter', 'receiptFormat', 'acceptedPayments',
+          'ultraExpressDelayHours', 'ultraExpressSurchargePercent',
+          'maxCashierDiscountPercent', 'corporateDiscountPercent',
+          'orderPrefix', 'receiptFooter', 'receiptFormat',
+          'autoCutPaper', 'autoPrintLabelsOnPayment', 'defaultPrinterName', 'defaultPrinterAddress',
+          'lastCashCloseDate', 'acceptedPayments',
           'agencies', 'smsNotificationsEnabled', 'whatsappNotificationsEnabled',
           'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
           'setupStep', 'setupCompleted', 'createdAt', 'updatedAt'
@@ -244,28 +307,41 @@ service cloud.firestore {
 
       allow update: if isOwner(userId) &&
         isValidId(userId) &&
-        isValidCompanyConfig(incoming(), userId) &&
-        incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
-          'companyName', 'legalName', 'rccm', 'nif', 'description',
-          'phone', 'whatsapp', 'email', 'country', 'city', 'commune', 'address',
-          'latitude', 'longitude', 'currency', 'taxRatePercent', 'openingHours',
-          'standardDelayHours', 'expressDelayHours', 'expressSurchargePercent',
-          'orderPrefix', 'receiptFooter', 'receiptFormat', 'acceptedPayments',
-          'agencies', 'smsNotificationsEnabled', 'whatsappNotificationsEnabled',
-          'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
-          'setupStep', 'setupCompleted', 'updatedAt'
-        ]);
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (
+          (isAgencyAdminRole() &&
+            request.resource.data.keys().hasOnly([
+              'userId', 'companyName', 'legalName', 'rccm', 'nif', 'description',
+              'phone', 'whatsapp', 'email', 'country', 'city', 'commune', 'address',
+              'latitude', 'longitude', 'currency', 'taxRatePercent', 'openingHours',
+              'standardDelayHours', 'expressDelayHours', 'expressSurchargePercent',
+              'ultraExpressDelayHours', 'ultraExpressSurchargePercent',
+              'maxCashierDiscountPercent', 'corporateDiscountPercent',
+              'orderPrefix', 'receiptFooter', 'receiptFormat',
+              'autoCutPaper', 'autoPrintLabelsOnPayment', 'defaultPrinterName', 'defaultPrinterAddress',
+              'lastCashCloseDate', 'acceptedPayments',
+              'agencies', 'smsNotificationsEnabled', 'whatsappNotificationsEnabled',
+              'subscriptionPlan', 'subscriptionBilling', 'subscriptionStatus',
+              'setupStep', 'setupCompleted', 'createdAt', 'updatedAt'
+            ])) ||
+          (isCashierRole() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'receiptFormat', 'autoCutPaper', 'autoPrintLabelsOnPayment',
+              'defaultPrinterName', 'defaultPrinterAddress', 'lastCashCloseDate', 'updatedAt'
+            ]))
+        ) &&
+        isValidCompanyConfig(request.resource.data, userId);
 
       allow delete: if false;
 
-      // Services & Tarifs
+      // Services & Tarifs (Modification réservée Directeur Général & Gérant d'Agence)
       match /services/{serviceId} {
         allow get: if isOwner(userId) && isValidId(serviceId);
         allow list: if isOwner(userId);
 
         allow create: if isOwner(userId) &&
+          isAgencyAdminRole() &&
           isValidId(serviceId) &&
           incoming().keys().hasAll([
             'userId', 'name', 'category', 'treatmentType', 'billingUnit',
@@ -278,6 +354,7 @@ service cloud.firestore {
           isValidServiceItem(incoming(), userId);
 
         allow update: if isOwner(userId) &&
+          isAgencyAdminRole() &&
           isValidId(serviceId) &&
           isValidServiceItem(incoming(), userId) &&
           incoming().userId == existing().userId &&
@@ -287,7 +364,7 @@ service cloud.firestore {
             'unitPrice', 'expressPrice', 'delayHours', 'available', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isValidId(serviceId);
+        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(serviceId);
       }
 
       // Clients CRM
@@ -296,6 +373,7 @@ service cloud.firestore {
         allow list: if isOwner(userId);
 
         allow create: if isOwner(userId) &&
+          !isNonFinancialRole() &&
           isValidId(clientId) &&
           incoming().keys().hasAll([
             'userId', 'fullName', 'phone', 'category', 'loyaltyPoints',
@@ -309,6 +387,7 @@ service cloud.firestore {
           isValidClientRecord(incoming(), userId);
 
         allow update: if isOwner(userId) &&
+          !isNonFinancialRole() &&
           isValidId(clientId) &&
           isValidClientRecord(incoming(), userId) &&
           incoming().userId == existing().userId &&
@@ -319,16 +398,18 @@ service cloud.firestore {
             'creditLimit', 'balanceDue', 'preferences', 'notes', 'active', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isValidId(clientId);
+        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(clientId);
       }
 
-      // Commandes & Production
+      // Commandes & Production (isolation stricte par tenant ET par agence côté serveur)
       match /orders/{orderId} {
-        allow get: if isOwner(userId) && isValidId(orderId);
-        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(orderId) && matchesAgencyClaim(existing().agencyName);
+        allow list: if isOwner(userId) && matchesAgencyClaim(resource.data.agencyName);
 
         allow create: if isOwner(userId) &&
+          !isNonFinancialRole() &&
           isValidId(orderId) &&
+          matchesAgencyClaim(incoming().agencyName) &&
           incoming().keys().hasAll([
             'userId', 'orderNumber', 'clientName', 'status', 'priority', 'items',
             'itemCount', 'subtotal', 'discountAmount', 'expressFee', 'deliveryFee',
@@ -349,41 +430,41 @@ service cloud.firestore {
 
         allow update: if isOwner(userId) &&
           isValidId(orderId) &&
-          isValidPressingOrder(incoming(), userId) &&
-          existing().status != 'CANCELLED' &&
-          incoming().userId == existing().userId &&
-          incoming().orderNumber == existing().orderNumber &&
-          incoming().createdAt == existing().createdAt &&
+          resource.data.status != 'CANCELLED' &&
+          matchesAgencyClaim(resource.data.agencyName) &&
+          matchesAgencyClaim(request.resource.data.agencyName) &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.orderNumber == resource.data.orderNumber &&
+          request.resource.data.createdAt == resource.data.createdAt &&
           (
-            // Action 1: Production workflow, per-item workshop tracking & quality update
-            (incoming().diff(existing()).affectedKeys().hasOnly([
+            // Action 1: Production workflow, per-item workshop tracking & quality update (financial fields guaranteed untouched by affectedKeys)
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status', 'items', 'assignedEmployee', 'qualityChecked', 'statusHistory', 'observations', 'updatedAt'
-            ]) &&
-              incoming().itemCount == existing().itemCount &&
-              incoming().subtotal == existing().subtotal &&
-              incoming().totalAmount == existing().totalAmount &&
-              incoming().paidAmount == existing().paidAmount &&
-              incoming().remainingAmount == existing().remainingAmount) ||
-            // Action 2: Payment settlement update
-            incoming().diff(existing()).affectedKeys().hasOnly([
-              'paidAmount', 'remainingAmount', 'paymentStatus', 'paymentMethod', 'statusHistory', 'updatedAt'
             ]) ||
-            // Action 3: Delivery assignment & dispatch update
-            incoming().diff(existing()).affectedKeys().hasOnly([
+            // Action 2: Payment settlement update (interdit aux rôles Opérateur, Contrôle Qualité et Livreur)
+            (!isNonFinancialRole() &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'paidAmount', 'remainingAmount', 'paymentStatus', 'paymentMethod', 'statusHistory', 'updatedAt'
+              ])) ||
+            // Action 3: Delivery assignment & dispatch update (financial fields guaranteed untouched by affectedKeys)
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'deliveryRequested', 'deliveryDriver', 'deliveryZone', 'status', 'statusHistory', 'updatedAt'
             ])
-          );
+          ) &&
+          isValidPressingOrder(request.resource.data, userId);
 
         allow delete: if false;
       }
 
-      // Caisse & Comptabilité SYSCOHADA (audit trail immutable: pas de suppression)
+      // Caisse & Comptabilité SYSCOHADA (audit trail immutable: interdit aux rôles non financiers + isolé par agence)
       match /transactions/{transactionId} {
-        allow get: if isOwner(userId) && isValidId(transactionId);
-        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && !isNonFinancialRole() && isValidId(transactionId) && matchesAgencyClaim(existing().agencyName);
+        allow list: if isOwner(userId) && !isNonFinancialRole() && matchesAgencyClaim(resource.data.agencyName);
 
         allow create: if isOwner(userId) &&
+          !isNonFinancialRole() &&
           isValidId(transactionId) &&
+          matchesAgencyClaim(incoming().agencyName) &&
           incoming().keys().hasAll([
             'userId', 'reference', 'entryType', 'category', 'syscohadaAccount',
             'label', 'amount', 'paymentMethod', 'createdAt', 'updatedAt'
@@ -427,16 +508,18 @@ service cloud.firestore {
             'unit', 'unitCost', 'supplierName', 'machineStatus', 'maintenanceNotes', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isValidId(stockId);
+        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(stockId);
       }
 
-      // Employés & Présences
+      // Employés, Salaires & Présences (interdit aux rôles Opérateur, Contrôle Qualité, Livreur ET Caissier)
       match /employees/{employeeId} {
-        allow get: if isOwner(userId) && isValidId(employeeId);
-        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && !isNonFinancialRole() && !isCashierRole() && isValidId(employeeId) && matchesAgencyClaim(existing().agencyName);
+        allow list: if isOwner(userId) && !isNonFinancialRole() && !isCashierRole() && matchesAgencyClaim(resource.data.agencyName);
 
         allow create: if isOwner(userId) &&
+          isAgencyAdminRole() &&
           isValidId(employeeId) &&
+          matchesAgencyClaim(incoming().agencyName) &&
           incoming().keys().hasAll([
             'userId', 'fullName', 'role', 'monthlySalary', 'commissionRate',
             'presentToday', 'active', 'createdAt', 'updatedAt'
@@ -448,6 +531,7 @@ service cloud.firestore {
           isValidEmployeeRecord(incoming(), userId);
 
         allow update: if isOwner(userId) &&
+          isAgencyAdminRole() &&
           isValidId(employeeId) &&
           isValidEmployeeRecord(incoming(), userId) &&
           incoming().userId == existing().userId &&
@@ -457,7 +541,7 @@ service cloud.firestore {
             'commissionRate', 'presentToday', 'active', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isValidId(employeeId);
+        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(employeeId);
       }
 
       // Réclamations & Tickets Qualité
@@ -487,7 +571,62 @@ service cloud.firestore {
             'status', 'severity', 'resolutionNote', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isValidId(claimId);
+        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(claimId);
+      }
+
+      // Journal d'Audit Sécurité & Accès RBAC (création autorisée pour tracer les refus, lecture réservée Directeur, immuable)
+      match /audit_logs/{logId} {
+        allow get: if isOwner(userId) && isDirectorRole() && isValidId(logId);
+        allow list: if isOwner(userId) && isDirectorRole();
+
+        allow create: if isOwner(userId) &&
+          isValidId(logId) &&
+          incoming().keys().hasAll([
+            'userId', 'actor', 'roleLabel', 'scopeLabel', 'action', 'allowed', 'createdAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'actor', 'roleLabel', 'scopeLabel', 'action', 'route', 'allowed', 'createdAt'
+          ]) &&
+          isValidAuditLogRecord(incoming(), userId);
+
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Jetons Firebase Cloud Messaging (FCM) par appareil authentifié
+      match /fcm_tokens/{tokenId} {
+        allow get, list: if isOwner(userId);
+        allow create, update: if isOwner(userId) &&
+          isValidId(tokenId) &&
+          incoming().keys().hasAll([
+            'userId', 'token', 'role', 'topics', 'platform', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'token', 'role', 'agencyName', 'topics', 'platform', 'createdAt', 'updatedAt'
+          ]) &&
+          isValidFcmTokenRecord(incoming(), userId);
+        allow delete: if isOwner(userId) && isValidId(tokenId);
+      }
+
+      // File de notifications FCM (nouvelles commandes caissiers & disponibilité vêtements clients)
+      match /notifications/{notifId} {
+        allow get: if isOwner(userId) && isValidId(notifId) && matchesAgencyClaim(existing().agencyName);
+        allow list: if isOwner(userId) && matchesAgencyClaim(resource.data.agencyName);
+
+        allow create: if isOwner(userId) &&
+          isValidId(notifId) &&
+          matchesAgencyClaim(incoming().agencyName) &&
+          incoming().keys().hasAll([
+            'userId', 'eventType', 'targetRole', 'title', 'body', 'delivered', 'createdAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'eventType', 'targetRole', 'agencyName', 'orderNumber',
+            'clientPhone', 'title', 'body', 'delivered', 'createdAt'
+          ]) &&
+          isValidPushNotificationRecord(incoming(), userId);
+
+        allow update: if false;
+        allow delete: if false;
       }
     }
   }

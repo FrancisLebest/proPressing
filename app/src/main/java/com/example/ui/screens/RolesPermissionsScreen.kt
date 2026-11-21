@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -113,7 +115,10 @@ fun RolesPermissionsScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Retour", tint = Color.White)
                     }
                 },
@@ -177,9 +182,10 @@ fun RolesPermissionsScreen(
                                     )
                                 }
                             }
-                            Row(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Surface(
                                     shape = RoundedCornerShape(50),
@@ -220,20 +226,22 @@ fun RolesPermissionsScreen(
                             Text(
                                 text = "Session active : ${activeSession.operatorName} (${activeSession.role.labelFr}) · ${activeSession.scopeLabel()}",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFFE2ECFF)
+                                color = Color(0xFFE2ECFF),
+                                softWrap = true
                             )
                         }
                     }
                 }
             }
 
-            // Role Selector Pills
+            // Role Selector Pills (inspection uniquement — aucun changement de rôle manuel)
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Sélectionner un rôle à inspecter ou activer",
+                        text = "Inspecter la matrice des droits par rôle",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        softWrap = true
                     )
                     Row(
                         modifier = Modifier
@@ -253,7 +261,9 @@ fun RolesPermissionsScreen(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
-                                modifier = Modifier.testTag("rbac_role_chip_${role.name}")
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .testTag("rbac_role_chip_${role.name}")
                             )
                         }
                     }
@@ -411,7 +421,7 @@ fun RolesPermissionsScreen(
                             perms.forEachIndexed { idx, perm ->
                                 val granted = perm in currentPermissions
                                 val locked = inspectedRole == WorkspaceRole.DIRECTEUR &&
-                                    perm == AccessPermission.MANAGE_STAFF_AND_ROLES
+                                    (perm == AccessPermission.EDIT_PRIVILEGE_MATRIX || perm == AccessPermission.MANAGE_USERS_AND_ROLES)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,

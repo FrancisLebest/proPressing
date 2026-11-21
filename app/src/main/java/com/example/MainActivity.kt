@@ -33,11 +33,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.core.NetworkConnectivityObserver
+import com.example.core.PressingNotificationManager
 import com.example.core.configureAppCheck
 import com.example.data.AiRepository
 import com.example.data.AuthSessionState
 import com.example.data.AuthUserProfile
 import com.example.data.PressingRepository
+import com.example.data.local.OfflineSyncRepository
+import com.example.data.local.PressingLocalDatabase
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.MainWorkspace
 import com.example.ui.screens.SetupWizardScreen
@@ -54,6 +58,7 @@ class MainActivity : ComponentActivity() {
 
         // STEP 1: Configure Firebase App Check with launch intent BEFORE any UI, ViewModels, or Firebase calls
         configureAppCheck(this, intent)
+        PressingNotificationManager.ensureChannels(this)
 
         enableEdgeToEdge()
 
@@ -124,13 +129,20 @@ private fun AuthenticatedPressingApp(
                 val app = checkNotNull(this[APPLICATION_KEY]) { "APPLICATION_KEY missing" }
                 val databaseId = app.getString(R.string.firestore_database_id)
                 val db = FirebaseFirestore.getInstance(databaseId)
+                val remoteRepo = PressingRepository(db)
+                val localDb = PressingLocalDatabase.getInstance(app)
+                val offlineSyncRepo = OfflineSyncRepository(localDb.offlineOrderDao(), remoteRepo)
+                val connectivityObserver = NetworkConnectivityObserver(app)
                 PressingViewModel(
-                    repository = PressingRepository(db),
+                    repository = remoteRepo,
                     aiRepository = AiRepository(),
                     currentUserId = userProfile.uid,
                     currentUserEmail = userProfile.email,
                     currentUserPhone = userProfile.phoneNumber,
-                    currentUserName = userProfile.displayLabel
+                    currentUserName = userProfile.displayLabel,
+                    appContext = app.applicationContext,
+                    offlineSyncRepository = offlineSyncRepo,
+                    connectivityObserver = connectivityObserver
                 )
             }
         }

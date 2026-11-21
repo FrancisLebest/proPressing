@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -484,7 +486,7 @@ fun StocksScreen(
     BackHandler { onBack() }
     var showDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<StockItem?>(null) }
-    val canEditStocks = activeSession.has(AccessPermission.EDIT_STOCKS)
+    val canEditStocks = activeSession.has(AccessPermission.ADVANCE_PRODUCTION) || activeSession.has(AccessPermission.CONFIGURE_PRINTER_AND_AGENCY)
     val showFinancials = activeSession.canViewFinancialAmounts
     val lowCount = stocks.count { it.isLowStock() || it.machineStatus != "OPERATIONAL" }
 
@@ -712,7 +714,7 @@ fun DeliveriesScreen(
     BackHandler { onBack() }
     val context = LocalContext.current
     val deliveryOrders = orders.filter { it.deliveryRequested || it.deliveryDriver.isNotBlank() }
-    val canDispatch = activeSession.has(AccessPermission.DISPATCH_DELIVERIES)
+    val canDispatch = activeSession.has(AccessPermission.MANAGE_DELIVERY_RUNS)
     val toDeliverCount = deliveryOrders.count { it.status != "DELIVERED" && it.status != "CANCELLED" }
     val deliveredCount = deliveryOrders.count { it.status == "DELIVERED" }
 
@@ -863,21 +865,27 @@ fun StaffScreen(
     BackHandler { onBack() }
     var showDialog by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EmployeeRecord?>(null) }
-    val canManageStaff = activeSession.has(AccessPermission.MANAGE_STAFF_AND_ROLES)
-    val canViewSalaries = activeSession.has(AccessPermission.VIEW_SALARIES)
+    val canManageStaff = activeSession.has(AccessPermission.MANAGE_USERS_AND_ROLES)
+    val canViewSalaries = activeSession.has(AccessPermission.VIEW_HR_SALARIES)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Personnel & Équipe (${employees.size})", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Retour", tint = Color.White)
                     }
                 },
                 actions = {
                     if (canManageStaff) {
-                        IconButton(onClick = { editing = null; showDialog = true }) {
+                        IconButton(
+                            onClick = { editing = null; showDialog = true },
+                            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        ) {
                             Icon(Icons.Rounded.Add, contentDescription = "Ajouter employé", tint = AfricaGold)
                         }
                     }
@@ -891,23 +899,25 @@ fun StaffScreen(
                 .fillMaxSize()
                 .padding(inner),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = PastelBlueTint,
                     border = BorderStroke(1.dp, PastelBlueBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Équipe & Affectations Agences", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MidnightNavy)
-                            Text(activeSession.scopeLabel(), style = MaterialTheme.typography.labelSmall, color = RoyalBlue)
+                        Column {
+                            Text("Équipe & Affectations Agences", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MidnightNavy, softWrap = true)
+                            Text(activeSession.scopeLabel(), style = MaterialTheme.typography.labelSmall, color = RoyalBlue, softWrap = true)
                         }
                         RoleBadgeChip(role = activeSession.role)
                     }
@@ -931,30 +941,29 @@ fun StaffScreen(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(40.dp)
+                                        .size(42.dp)
                                         .clip(CircleShape)
                                         .background(SoftBlueContainer),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(initials, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = RoyalBlue)
                                 }
-                                Column {
-                                    Text(emp.fullName, fontWeight = FontWeight.Bold)
-                                    Text("${EmployeeRole.fromRaw(emp.role).labelFr} · ${emp.agencyName}", style = MaterialTheme.typography.bodySmall, color = RoyalBlue)
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(emp.fullName, fontWeight = FontWeight.Bold, softWrap = true)
+                                    Text("${EmployeeRole.fromRaw(emp.role).labelFr} · ${emp.agencyName}", style = MaterialTheme.typography.bodySmall, color = RoyalBlue, softWrap = true)
                                     Text(
                                         text = if (!canViewSalaries || (emp.monthlySalary == 0L && emp.commissionRate == 0.0)) {
                                             "Rémunération : Confidentielle (accès restreint)"
@@ -962,18 +971,33 @@ fun StaffScreen(
                                             "Salaire : ${formatMoney(emp.monthlySalary, company.currency)} · Comm. ${emp.commissionRate}%"
                                         },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = true
                                     )
                                 }
                             }
                             if (canManageStaff) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Switch(
-                                        checked = emp.presentToday,
-                                        onCheckedChange = { present -> onSaveEmployee(emp.copy(presentToday = present)) }
-                                    )
-                                    IconButton(onClick = { onDeleteEmployee(emp.id) }) {
-                                        Icon(Icons.Rounded.Delete, contentDescription = "Supprimer", tint = CrimsonDanger, modifier = Modifier.size(18.dp))
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            text = if (emp.presentToday) "Présent aujourd'hui" else "Absent",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Switch(
+                                            checked = emp.presentToday,
+                                            onCheckedChange = { present -> onSaveEmployee(emp.copy(presentToday = present)) }
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { onDeleteEmployee(emp.id) },
+                                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Delete, contentDescription = "Supprimer employé", tint = CrimsonDanger, modifier = Modifier.size(20.dp))
                                     }
                                 }
                             }

@@ -145,24 +145,35 @@ class ExampleUnitTest {
 
     @Test
     fun rolePermissionMatrix_grantsExpectedDefaultPrivileges() {
+        // Exact 27 granular privileges grouped across 5 domains (6 + 5 + 6 + 5 + 5 = 27)
+        assertEquals(27, com.example.data.AccessPermission.entries.size)
+        val byDomain = com.example.data.AccessPermission.entries.groupBy { it.domainFr }
+        assertEquals(5, byDomain.size)
+        assertEquals(6, byDomain["Commandes & Catalogue"]?.size)
+        assertEquals(5, byDomain["Atelier & Qualité"]?.size)
+        assertEquals(6, byDomain["Caisse & Finances"]?.size)
+        assertEquals(5, byDomain["Clients, Livraison & SAV"]?.size)
+        assertEquals(5, byDomain["Administration, RH & Sécurité"]?.size)
+
         val directorPerms = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.DIRECTEUR)
-        assertEquals(com.example.data.AccessPermission.entries.size, directorPerms.size)
+        assertEquals(27, directorPerms.size)
 
         val operatorPerms = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.OPERATEUR)
         assertTrue(com.example.data.AccessPermission.ADVANCE_PRODUCTION in operatorPerms)
-        assertFalse(com.example.data.AccessPermission.VIEW_FINANCIAL_KPIS in operatorPerms)
-        assertFalse(com.example.data.AccessPermission.VIEW_ACCOUNTING_SYSCOHADA in operatorPerms)
+        assertFalse(com.example.data.AccessPermission.VIEW_AGENCY_REVENUE in operatorPerms)
+        assertFalse(com.example.data.AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA in operatorPerms)
         assertFalse(com.example.data.AccessPermission.COLLECT_PAYMENT in operatorPerms)
 
         val qualityPerms = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.CONTROLE_QUALITE)
         assertTrue(com.example.data.AccessPermission.VALIDATE_QUALITY in qualityPerms)
-        assertFalse(com.example.data.AccessPermission.VIEW_FINANCIAL_KPIS in qualityPerms)
+        assertTrue(com.example.data.AccessPermission.RETURN_FOR_REWORK in qualityPerms)
+        assertFalse(com.example.data.AccessPermission.VIEW_AGENCY_REVENUE in qualityPerms)
 
         val driverPerms = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.LIVREUR)
         assertEquals(
             setOf(
-                com.example.data.AccessPermission.VIEW_DELIVERIES,
-                com.example.data.AccessPermission.DISPATCH_DELIVERIES
+                com.example.data.AccessPermission.MANAGE_DELIVERY_RUNS,
+                com.example.data.AccessPermission.SEND_WHATSAPP_NOTIFICATION
             ),
             driverPerms
         )
@@ -615,5 +626,347 @@ class ExampleUnitTest {
         assertEquals("Retard 3h", com.example.ui.screens.formatRemainingDeadlineFr(lateOrder.dueDateMillis, now))
         assertEquals("Dans 8h", com.example.ui.screens.formatRemainingDeadlineFr(dueTodayOrder.dueDateMillis, now))
         assertEquals("Demain (36h)", com.example.ui.screens.formatRemainingDeadlineFr(due48hOrder.dueDateMillis, now))
+    }
+
+    @Test
+    fun thermalReceiptFormatter_adapts58mmAnd80mmWidthsAndEncodesEscPos() {
+        val company = com.example.data.CompanyConfig(
+            companyName = "Pressing Étoile d'Abidjan",
+            address = "Rue des Jardins, Cocody",
+            city = "Abidjan",
+            phone = "+225 07 58 42 19 63",
+            nif = "CI-2026-0098123A",
+            currency = "FCFA",
+            receiptFooter = "Merci pour votre confiance · Garde max 60 jours."
+        )
+        val item = com.example.data.OrderGarmentItem(
+            garmentName = "Chemise Manches Longues",
+            serviceName = "Lavage + Repassage",
+            quantity = 3L,
+            unitPrice = 1500L,
+            lineTotal = 4500L,
+            color = "Blanc",
+            defects = "Tache col",
+            barcode = "PR26-01"
+        )
+        val order = PressingOrder(
+            id = "ord_58",
+            orderNumber = "PRESS-2026-00105",
+            agencyName = "Agence Cocody",
+            clientName = "Kouassi Yao",
+            clientPhone = "+225 07 11 22 33 44",
+            priority = com.example.data.OrderPriority.EXPRESS.name,
+            items = listOf(item.toMap()),
+            subtotal = 4500L,
+            discountAmount = 500L,
+            totalAmount = 4000L,
+            paidAmount = 2000L,
+            remainingAmount = 2000L,
+            paymentMethod = PaymentMethod.WAVE.name,
+            dueDateMillis = System.currentTimeMillis() + 86_400_000L
+        )
+
+        val lines58 = com.example.core.ThermalReceiptFormatter.buildThermalReceiptLines(
+            company = company,
+            order = order,
+            paperWidth = com.example.core.ThermalPaperWidth.MM_58,
+            includeFinancials = true
+        )
+        assertTrue(lines58.isNotEmpty())
+        assertTrue(lines58.all { it.text.length <= com.example.core.ThermalPaperWidth.MM_58.charsPerLine })
+        assertTrue(lines58.any { it.text.contains("CI-2026-0098123A") })
+        assertTrue(
+            lines58.any {
+                it.text.contains("RESTE À PAYER") &&
+                    (it.style == com.example.core.ThermalLineStyle.TITLE || it.style == com.example.core.ThermalLineStyle.BOLD)
+            }
+        )
+
+        val lines80 = com.example.core.ThermalReceiptFormatter.buildThermalReceiptLines(
+            company = company,
+            order = order,
+            paperWidth = com.example.core.ThermalPaperWidth.MM_80,
+            includeFinancials = true
+        )
+        assertTrue(lines80.all { it.text.length <= com.example.core.ThermalPaperWidth.MM_80.charsPerLine })
+        assertTrue(lines80.any { it.text.contains("PRESS-2026-00105") })
+
+        val escBytes = com.example.core.ThermalReceiptFormatter.encodeEscPosBytes(
+            lines = lines58,
+            qrContent = "PRESS-2026-00105",
+            paperWidth = com.example.core.ThermalPaperWidth.MM_58,
+            autoCut = true
+        )
+        // Starts with ESC @ (0x1B, 0x40) and ends with partial cut GS V 66 0 (0x1D, 0x56, 0x42, 0x00)
+        assertEquals(0x1B.toByte(), escBytes[0])
+        assertEquals(0x40.toByte(), escBytes[1])
+        assertEquals(0x1D.toByte(), escBytes[escBytes.size - 4])
+        assertEquals(0x56.toByte(), escBytes[escBytes.size - 3])
+    }
+
+    @Test
+    fun thermalGarmentLabels_expandPhysicalPiecesAndMaskPricesForWorkshopRoles() {
+        val company = com.example.data.CompanyConfig(companyName = "Pressing Pro", currency = "FCFA")
+        val shirt = com.example.data.OrderGarmentItem(
+            garmentName = "Chemise",
+            serviceName = "Nettoyage à sec",
+            fabric = "Soie délicate",
+            quantity = 3L,
+            unitPrice = 2000L,
+            lineTotal = 6000L,
+            defects = "Tache huile manche",
+            barcode = "TAG-CH"
+        )
+        val order = PressingOrder(
+            id = "ord_lbl",
+            orderNumber = "PRESS-2026-00222",
+            clientName = "Awa Koné",
+            priority = com.example.data.OrderPriority.EXPRESS.name,
+            items = listOf(shirt.toMap()),
+            totalAmount = 6000L,
+            paidAmount = 6000L,
+            remainingAmount = 0L,
+            dueDateMillis = System.currentTimeMillis() + 43_200_000L
+        )
+
+        val labels = com.example.core.ThermalReceiptFormatter.buildPhysicalGarmentLabels(order)
+        assertEquals(3, labels.size)
+        assertEquals("Pièce 1/3", labels[0].pieceCounterLabel)
+        assertEquals("Pièce 2/3", labels[1].pieceCounterLabel)
+        assertEquals("Pièce 3/3", labels[2].pieceCounterLabel)
+        assertEquals(3, labels.map { it.barcodeValue }.distinct().size)
+        assertTrue("URGENT" in labels[0].alertTags)
+        assertTrue("TACHE" in labels[0].alertTags)
+        assertTrue("DÉLICAT" in labels[0].alertTags)
+
+        // RBAC check: non-financial roles see ZERO FCFA prices on receipt lines or labels
+        val redactedLines = com.example.core.ThermalReceiptFormatter.buildThermalReceiptLines(
+            company = company,
+            order = order,
+            paperWidth = com.example.core.ThermalPaperWidth.MM_58,
+            includeFinancials = false
+        )
+        assertFalse(redactedLines.any { it.text.contains("FCFA") || it.text.contains("6 000") || it.text.contains("TOTAL") })
+
+        val operator = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.OPERATEUR,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.OPERATEUR)
+        )
+        val quality = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.CONTROLE_QUALITE,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.CONTROLE_QUALITE)
+        )
+        assertFalse(operator.canPrintFinancialReceipt)
+        assertTrue(operator.canPrintGarmentLabels)
+        assertFalse(quality.canPrintFinancialReceipt)
+        assertTrue(quality.canPrintGarmentLabels)
+    }
+
+    @Test
+    fun dailyCashCloseZ_calculatesDrawerVarianceAndEnforcesAgencySettingsRbac() {
+        val entries = listOf(
+            com.example.data.AccountingEntry(id = "t1", entryType = "REVENUE", paymentMethod = PaymentMethod.ESPECES.name, amount = 25000L, agencyName = "Agence Cocody"),
+            com.example.data.AccountingEntry(id = "t2", entryType = "REVENUE", paymentMethod = PaymentMethod.WAVE.name, amount = 15000L, agencyName = "Agence Cocody"),
+            com.example.data.AccountingEntry(id = "t3", entryType = "REVENUE", paymentMethod = PaymentMethod.ORANGE_MONEY.name, amount = 10000L, agencyName = "Agence Cocody"),
+            com.example.data.AccountingEntry(id = "t4", entryType = "EXPENSE", paymentMethod = PaymentMethod.ESPECES.name, amount = 5000L, agencyName = "Agence Cocody")
+        )
+
+        val exactClose = com.example.core.ThermalReceiptFormatter.calculateDailyCashClose(
+            transactions = entries,
+            countedCash = 20000L,
+            agencyName = "Agence Cocody",
+            targetDateKey = "2026-11-21"
+        )
+        assertEquals(20000L, exactClose.expectedCashInDrawer)
+        assertEquals(0L, exactClose.variance)
+        assertFalse(exactClose.requiresJustification)
+        assertEquals(50000L, exactClose.totalDayRevenue)
+
+        val shortfallClose = com.example.core.ThermalReceiptFormatter.calculateDailyCashClose(
+            transactions = entries,
+            countedCash = 18500L,
+            agencyName = "Agence Cocody",
+            targetDateKey = "2026-11-21"
+        )
+        assertEquals(-1500L, shortfallClose.variance)
+        assertTrue(shortfallClose.requiresJustification)
+
+        // Agency Administration RBAC matrix
+        val director = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.DIRECTEUR,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.DIRECTEUR)
+        )
+        val manager = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.GERANT_AGENCE,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.GERANT_AGENCE)
+        )
+        val cashier = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.CAISSIER,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.CAISSIER)
+        )
+        val driver = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.LIVREUR,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.LIVREUR)
+        )
+
+        assertTrue(director.canEditAgencySettingsAndTariffs)
+        assertTrue(manager.canEditAgencySettingsAndTariffs)
+        assertFalse(cashier.canEditAgencySettingsAndTariffs)
+        assertTrue(cashier.canAccessRoute("settings"))
+        assertTrue(cashier.canManageLocalPrinter)
+        assertTrue(cashier.canRunCashClose)
+        assertFalse(driver.canAccessRoute("settings"))
+        assertFalse(driver.canRunCashClose)
+    }
+
+    @Test
+    fun roleDashboardAnalytics_andDriverCodOnlyScoping_workAccurately() {
+        val now = System.currentTimeMillis()
+        val unpaidDelivery = PressingOrder(
+            id = "d1",
+            orderNumber = "PRESS-101",
+            agencyName = "Agence Cocody",
+            status = OrderStatus.READY.name,
+            paymentStatus = com.example.data.PaymentStatus.PARTIAL.name,
+            subtotal = 10000L,
+            discountAmount = 2500L, // 25% > 10% cashier cap -> governance alert
+            totalAmount = 7500L,
+            paidAmount = 3000L,
+            remainingAmount = 4500L,
+            deliveryRequested = true,
+            deliveryDriver = "Koné Ibrahim",
+            deliveryZone = "Cocody Angré",
+            itemCount = 3L,
+            dueDateMillis = now + 7_200_000L
+        )
+        val paidDelivery = PressingOrder(
+            id = "d2",
+            orderNumber = "PRESS-102",
+            agencyName = "Agence Yopougon",
+            status = OrderStatus.WASHING.name,
+            paymentStatus = com.example.data.PaymentStatus.PAID.name,
+            subtotal = 6000L,
+            totalAmount = 6000L,
+            paidAmount = 6000L,
+            remainingAmount = 0L,
+            deliveryRequested = true,
+            deliveryDriver = "Koné Ibrahim",
+            deliveryZone = "Yopougon Niangon",
+            itemCount = 2L,
+            dueDateMillis = now - 3_600_000L // late
+        )
+
+        // Driver sees ONLY COD remainingAmount on unpaid delivery, zero prices/totals/CA
+        val driverSession = com.example.data.ActiveRoleSession(
+            role = com.example.data.WorkspaceRole.LIVREUR,
+            operatorName = "Koné Ibrahim",
+            isolatedAgency = null,
+            permissions = com.example.data.RolePermissionMatrix.defaultPermissionsFor(com.example.data.WorkspaceRole.LIVREUR)
+        )
+        val scopedDriverOrders = com.example.data.TenantDataScoper.scopeOrders(listOf(unpaidDelivery, paidDelivery), driverSession)
+        val scopedUnpaid = scopedDriverOrders.first { it.id == "d1" }
+        val scopedPaid = scopedDriverOrders.first { it.id == "d2" }
+        assertEquals(0L, scopedUnpaid.totalAmount)
+        assertEquals(0L, scopedUnpaid.paidAmount)
+        assertEquals(4500L, scopedUnpaid.remainingAmount)
+        assertEquals(0L, scopedPaid.remainingAmount)
+        assertEquals(4500L, com.example.data.RoleDashboardAnalytics.computeDriverCodTotal(scopedDriverOrders))
+
+        // Punctuality: 1 on-time, 1 late -> 50%
+        assertEquals(50, com.example.data.RoleDashboardAnalytics.computePunctualityRatePercent(listOf(unpaidDelivery, paidDelivery), now))
+
+        // Agency comparison ranks Cocody (7500) ahead of Yopougon (6000)
+        val comparison = com.example.data.RoleDashboardAnalytics.computeAgencyComparison(
+            listOf(unpaidDelivery, paidDelivery),
+            listOf("Agence Cocody", "Agence Yopougon"),
+            now
+        )
+        assertEquals("Agence Cocody", comparison.first().agencyName)
+        assertEquals(7500L, comparison.first().revenueFcfa)
+
+        // Governance alerts detect cash variance, exceptional discount (>10%), open SAV claim, and denied access audit
+        val alerts = com.example.data.RoleDashboardAnalytics.detectGovernanceAlerts(
+            orders = listOf(unpaidDelivery, paidDelivery),
+            transactions = listOf(
+                com.example.data.AccountingEntry(entryType = "CASH_CLOSE", label = "Clôture Z 2026-11-21 · Manquant -1500")
+            ),
+            claims = listOf(com.example.data.ClaimRecord(status = "OPEN", subject = "Bouton manquant")),
+            auditLog = listOf(com.example.data.RoleAuditEvent("10:00", "Opérateur", "Atelier", "Cocody", "Accès bloqué finance", allowed = false)),
+            maxCashierDiscountPercent = 10.0
+        )
+        assertEquals(1, alerts.cashVariances.size)
+        assertEquals(1, alerts.exceptionalDiscountOrders.size)
+        assertEquals(1, alerts.openClaims.size)
+        assertEquals(1, alerts.deniedAuditEventsCount)
+        assertEquals(4, alerts.totalAlertCount)
+    }
+
+    @Test
+    fun offlineRoomCacheEntity_andFcmTopicRouting_workCorrectly() {
+        val sampleItems = listOf(
+            com.example.data.OrderGarmentItem(
+                garmentName = "Chemise classique",
+                quantity = 2L,
+                unitPrice = 1000L,
+                lineTotal = 2000L,
+                barcode = "PR-OFF-1"
+            ),
+            com.example.data.OrderGarmentItem(
+                garmentName = "Costume 2 pièces",
+                quantity = 1L,
+                unitPrice = 3000L,
+                lineTotal = 3000L,
+                barcode = "PR-OFF-2"
+            )
+        )
+        val encoded = com.example.data.local.OfflineGarmentJsonCodec.encode(sampleItems)
+        val decoded = com.example.data.local.OfflineGarmentJsonCodec.decode(encoded)
+        assertEquals(2, decoded.size)
+        assertEquals("Chemise classique", decoded[0].garmentName)
+        assertEquals(2L, decoded[0].quantity)
+        assertEquals("PR-OFF-2", decoded[1].barcode)
+
+        val entity = com.example.data.local.OfflineOrderEntity(
+            localId = "offline_test_01",
+            userId = "uid_cashier",
+            orderNumber = "PRESS-OFF-001",
+            agencyName = "Agence Cocody",
+            clientId = "cli_1",
+            clientName = "Konan Serge",
+            clientPhone = "+225 07 00 11 22",
+            clientAddress = "Cocody Angré",
+            priority = com.example.data.OrderPriority.EXPRESS.name,
+            itemsJson = encoded,
+            discountAmount = 500L,
+            expressFee = 1000L,
+            deliveryFee = 0L,
+            taxAmount = 0L,
+            paidAmount = 3000L,
+            paymentMethod = com.example.data.PaymentMethod.WAVE.name,
+            deliveryRequested = false,
+            deliveryZone = "",
+            assignedEmployee = "Caissier 1",
+            clientSignatureName = "Konan Serge",
+            observations = "Tache col",
+            dueDateMillis = System.currentTimeMillis() + 86_400_000L
+        )
+        val asOrder = entity.toPressingOrder()
+        assertEquals("PRESS-OFF-001", asOrder.orderNumber)
+        assertEquals(3L, asOrder.itemCount)
+        assertEquals(5000L, asOrder.subtotal)
+        assertEquals(5500L, asOrder.totalAmount)
+        assertEquals(3000L, asOrder.paidAmount)
+        assertEquals(2500L, asOrder.remainingAmount)
+        assertEquals("PARTIAL", asOrder.paymentStatus)
+        assertTrue(asOrder.observations.contains("Cache local (Room)"))
+
+        // FCM topic subscription builder
+        val cashierTopics = com.example.core.PressingNotificationManager.buildRoleTopics(
+            role = com.example.data.WorkspaceRole.CAISSIER,
+            agencyName = "Agence Cocody 8ème Tranche"
+        )
+        assertTrue("pressing_cashiers" in cashierTopics)
+        assertTrue("pressing_all" in cashierTopics)
+        assertTrue(cashierTopics.any { it.startsWith("agency_agence_cocody") })
     }
 }

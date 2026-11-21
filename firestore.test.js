@@ -413,3 +413,289 @@ test("Orders workflow: action-scoped updates, payment settlement, terminal lock,
     aliceDb.collection("users").doc(ALICE_UID).collection("transactions").doc("tx_1").delete()
   );
 });
+
+test("RBAC rules: non-financial roles blocked from accounting, salaries, financial order edits, and tariffs", async () => {
+  const directorDb = testEnv.authenticatedContext(ALICE_UID, { role: "DIRECTEUR" }).firestore();
+  const managerDb = testEnv.authenticatedContext(ALICE_UID, { role: "GERANT_AGENCE" }).firestore();
+  const cashierDb = testEnv.authenticatedContext(ALICE_UID, { role: "CAISSIER" }).firestore();
+  const operatorDb = testEnv.authenticatedContext(ALICE_UID, { role: "OPERATEUR" }).firestore();
+  const qcDb = testEnv.authenticatedContext(ALICE_UID, { role: "CONTROLE_QUALITE" }).firestore();
+  const driverDb = testEnv.authenticatedContext(ALICE_UID, { role: "LIVREUR" }).firestore();
+  const ts = pastDate(10000);
+
+  // Seed company, service, employee, order, and transaction as Directeur
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).set(validCompanyPayload(ALICE_UID, ts))
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("services").doc("srv_1").set({
+      userId: ALICE_UID,
+      name: "Costume 2 pieces",
+      category: "Costumes & Vestes",
+      treatmentType: "Nettoyage a sec",
+      billingUnit: "PIECE",
+      unitPrice: 3000,
+      expressPrice: 4500,
+      delayHours: 48,
+      available: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_1").set({
+      userId: ALICE_UID,
+      fullName: "Kone Moussa",
+      phone: "+225 07 11 22 33",
+      role: "OPERATEUR",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 150000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_1").set(
+      validOrderPayload(ALICE_UID, ts)
+    )
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("transactions").doc("tx_1").set({
+      userId: ALICE_UID,
+      reference: "ECR-Z-01",
+      entryType: "REVENUE",
+      category: "Prestation Pressing",
+      syscohadaAccount: "706",
+      label: "Encaissement PRESS-2026-0001",
+      amount: 1000,
+      paymentMethod: "WAVE",
+      orderId: "ord_1",
+      counterparty: "Kouassi Yao",
+      agencyName: "Agence Principale - Cocody",
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Non-financial roles CANNOT read transactions or employees (salaries/accounting)
+  for (const restrictedDb of [operatorDb, qcDb, driverDb]) {
+    await assertFails(restrictedDb.collection("users").doc(ALICE_UID).collection("transactions").get());
+    await assertFails(restrictedDb.collection("users").doc(ALICE_UID).collection("employees").get());
+    // Cannot modify financial fields of an order (Action 2)
+    await assertFails(
+      restrictedDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_1").update({
+        paidAmount: 2000,
+        remainingAmount: 0,
+        paymentStatus: "PAID",
+        paymentMethod: "ESPECES",
+        statusHistory: ["Tentative"],
+        updatedAt: pastDate(1000),
+      })
+    );
+    // Cannot modify tariffs
+    await assertFails(
+      restrictedDb.collection("users").doc(ALICE_UID).collection("services").doc("srv_1").update({
+        unitPrice: 500,
+        updatedAt: pastDate(1000),
+      })
+    );
+    // Cannot modify agency settings
+    await assertFails(
+      restrictedDb.collection("users").doc(ALICE_UID).update({
+        maxCashierDiscountPercent: 50.0,
+        updatedAt: pastDate(1000),
+      })
+    );
+  }
+
+  // Operator CAN still advance production status without touching financial fields
+  await assertSucceeds(
+    operatorDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_1").update({
+      status: "WASHING",
+      statusHistory: ["2026-11-19 10:00 - Enregistree", "En lavage"],
+      updatedAt: pastDate(800),
+    })
+  );
+
+  // Cashier CANNOT modify tariffs or discount caps, but CAN configure local Bluetooth printer & cash close date
+  await assertFails(
+    cashierDb.collection("users").doc(ALICE_UID).collection("services").doc("srv_1").update({
+      unitPrice: 100,
+      updatedAt: pastDate(700),
+    })
+  );
+  await assertFails(
+    cashierDb.collection("users").doc(ALICE_UID).update({
+      maxCashierDiscountPercent: 80.0,
+      updatedAt: pastDate(700),
+    })
+  );
+  await assertSucceeds(
+    cashierDb.collection("users").doc(ALICE_UID).update({
+      receiptFormat: "THERMAL_58",
+      autoCutPaper: true,
+      defaultPrinterName: "MPT-II 58mm",
+      defaultPrinterAddress: "00:11:22:33:44:55",
+      lastCashCloseDate: "2026-11-21",
+      updatedAt: pastDate(600),
+    })
+  );
+
+  // Gerant d'Agence CAN modify agency settings, discount caps, and tariffs
+  await assertSucceeds(
+    managerDb.collection("users").doc(ALICE_UID).update({
+      maxCashierDiscountPercent: 12.0,
+      ultraExpressDelayHours: 6,
+      ultraExpressSurchargePercent: 100.0,
+      updatedAt: pastDate(500),
+    })
+  );
+  await assertSucceeds(
+    managerDb.collection("users").doc(ALICE_UID).collection("services").doc("srv_1").update({
+      unitPrice: 3500,
+      updatedAt: pastDate(400),
+    })
+  );
+});
+
+test("Security audit_logs: any tenant role can log denied access, only Directeur can read, immutable", async () => {
+  const directorDb = testEnv.authenticatedContext(ALICE_UID, { role: "DIRECTEUR" }).firestore();
+  const managerDb = testEnv.authenticatedContext(ALICE_UID, { role: "GERANT_AGENCE" }).firestore();
+  const operatorDb = testEnv.authenticatedContext(ALICE_UID, { role: "OPERATEUR" }).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { role: "DIRECTEUR" }).firestore();
+  const ts = pastDate(5000);
+
+  // Operator access-denial attempt is logged into audit_logs
+  await assertSucceeds(
+    operatorDb.collection("users").doc(ALICE_UID).collection("audit_logs").doc("log_1").set({
+      userId: ALICE_UID,
+      actor: "Kone Moussa",
+      roleLabel: "Atelier",
+      scopeLabel: "Agence Cocody",
+      action: "Acces bloque vers finance (Consulter CA multi-agences & SYSCOHADA)",
+      route: "finance",
+      allowed: false,
+      createdAt: ts,
+    })
+  );
+
+  // Directeur can read audit_logs; Manager, Operator, and cross-tenant Bob CANNOT
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("audit_logs").get()
+  );
+  await assertFails(
+    managerDb.collection("users").doc(ALICE_UID).collection("audit_logs").get()
+  );
+  await assertFails(
+    operatorDb.collection("users").doc(ALICE_UID).collection("audit_logs").get()
+  );
+  await assertFails(
+    bobDb.collection("users").doc(ALICE_UID).collection("audit_logs").get()
+  );
+
+  // Audit logs are strictly immutable (cannot be updated or deleted even by Directeur)
+  await assertFails(
+    directorDb.collection("users").doc(ALICE_UID).collection("audit_logs").doc("log_1").update({
+      allowed: true,
+    })
+  );
+  await assertFails(
+    directorDb.collection("users").doc(ALICE_UID).collection("audit_logs").doc("log_1").delete()
+  );
+});
+
+test("Cross-agency isolation, Cashier salary protection, FCM tokens, and notifications", async () => {
+  const directorDb = testEnv.authenticatedContext(ALICE_UID, { role: "DIRECTEUR" }).firestore();
+  const cocodyCashierDb = testEnv
+    .authenticatedContext(ALICE_UID, { role: "CAISSIER", agency: "Agence Principale - Cocody" })
+    .firestore();
+  const yopougonManagerDb = testEnv
+    .authenticatedContext(ALICE_UID, { role: "GERANT_AGENCE", agency: "Agence Yopougon" })
+    .firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID, { role: "DIRECTEUR" }).firestore();
+  const ts = pastDate(5000);
+
+  // Seed Cocody order & employee
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_cocody").set(
+      validOrderPayload(ALICE_UID, ts)
+    )
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_cocody").set({
+      userId: ALICE_UID,
+      fullName: "Kouame Jean",
+      phone: "+225 07 00 00 11",
+      role: "CAISSIER",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 180000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Cross-agency: Yopougon manager CANNOT read or update Cocody order
+  await assertFails(
+    yopougonManagerDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_cocody").get()
+  );
+  await assertFails(
+    yopougonManagerDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_cocody").update({
+      status: "WASHING",
+      updatedAt: pastDate(1000),
+    })
+  );
+
+  // Same-agency cashier CAN read Cocody order, CANNOT read employees salaries
+  await assertSucceeds(
+    cocodyCashierDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_cocody").get()
+  );
+  await assertFails(
+    cocodyCashierDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_cocody").get()
+  );
+
+  // FCM device token registration & cross-tenant protection
+  await assertSucceeds(
+    cocodyCashierDb.collection("users").doc(ALICE_UID).collection("fcm_tokens").doc("device_12345").set({
+      userId: ALICE_UID,
+      token: "fcm_token_example_android_1234567890",
+      role: "CAISSIER",
+      agencyName: "Agence Principale - Cocody",
+      topics: ["pressing_all", "pressing_cashiers", "agency_agence_principale_cocody"],
+      platform: "ANDROID",
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertFails(
+    bobDb.collection("users").doc(ALICE_UID).collection("fcm_tokens").doc("device_12345").get()
+  );
+
+  // Push notification outbox: cashier creates NEW_ORDER_CASHIER for Cocody; Yopougon cannot read Cocody notification
+  await assertSucceeds(
+    cocodyCashierDb.collection("users").doc(ALICE_UID).collection("notifications").doc("notif_1").set({
+      userId: ALICE_UID,
+      eventType: "NEW_ORDER_CASHIER",
+      targetRole: "CAISSIER",
+      agencyName: "Agence Principale - Cocody",
+      orderNumber: "PRESS-2026-0001",
+      clientPhone: "+225 07 58 42 19 63",
+      title: "Nouvelle commande PRESS-2026-0001",
+      body: "Kouassi Yao - 2 pieces enregistrees",
+      delivered: false,
+      createdAt: ts,
+    })
+  );
+  await assertFails(
+    yopougonManagerDb.collection("users").doc(ALICE_UID).collection("notifications").doc("notif_1").get()
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("notifications").doc("notif_1").get()
+  );
+});
+

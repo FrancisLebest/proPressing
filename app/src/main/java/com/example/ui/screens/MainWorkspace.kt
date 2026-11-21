@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +40,9 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Checkroom
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HelpOutline
@@ -45,6 +52,7 @@ import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.PointOfSale
 import androidx.compose.material.icons.rounded.Public
@@ -58,6 +66,8 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
@@ -99,12 +109,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.core.PressingNotificationManager
 import com.example.core.formatMoney
 import com.example.data.AccessPermission
 import com.example.data.AuthUserProfile
@@ -115,10 +127,12 @@ import com.example.data.SubscriptionPlan
 import com.example.data.TenantDataScoper
 import com.example.data.WorkspaceRole
 import com.example.ui.components.GestionProBrandHeader
-import com.example.ui.components.RestrictedAccessCard
 import com.example.ui.components.RoleBadgeChip
 import com.example.ui.theme.AfricaGold
+import com.example.ui.theme.AmberContainer
 import com.example.ui.theme.CrimsonDanger
+import com.example.ui.theme.EmeraldContainer
+import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.MidnightNavy
 import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SidebarNavyBottom
@@ -157,6 +171,21 @@ fun MainWorkspace(
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     val garmentVisionState by viewModel.garmentVisionState.collectAsStateWithLifecycle()
     val aiAdvisorState by viewModel.aiAdvisorState.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+    val pendingOfflineOrders by viewModel.pendingOfflineOrders.collectAsStateWithLifecycle()
+    val isSyncingOffline by viewModel.isSyncingOffline.collectAsStateWithLifecycle()
+    val pushNotifications by viewModel.pushNotificationsState.collectAsStateWithLifecycle()
+    val fcmTopics by viewModel.fcmTopics.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    var notifPermissionGranted by remember {
+        mutableStateOf(PressingNotificationManager.hasNotificationPermission(context))
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notifPermissionGranted = granted
+    }
 
     val rawServices = (servicesState as? UiState.Success)?.data.orEmpty()
     val rawClients = (clientsState as? UiState.Success)?.data.orEmpty()
@@ -189,6 +218,7 @@ fun MainWorkspace(
 
     var currentRoute by remember { mutableStateOf("dashboard") }
     var selectedOrderId by remember { mutableStateOf<String?>(null) }
+    var autoOpenThermalPrintForOrderId by remember { mutableStateOf<String?>(null) }
     var showGlobalSearch by remember { mutableStateOf(false) }
     var showNotifications by remember { mutableStateOf(false) }
 
@@ -202,7 +232,7 @@ fun MainWorkspace(
     val lateOrders = remember(orders) { orders.filter { it.isLate() } }
     val lowStocks = remember(stocks) { stocks.filter { it.isLowStock() || it.machineStatus != "OPERATIONAL" } }
     val openClaims = remember(claims) { claims.filter { it.status != "RESOLVED" } }
-    val alertCount = lateOrders.size + lowStocks.size + openClaims.size
+    val alertCount = lateOrders.size + lowStocks.size + openClaims.size + pendingOfflineOrders.size
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -215,7 +245,7 @@ fun MainWorkspace(
         }
     }
 
-    // Strict Route Permission Enforcement for Dedicated Full-Screen Routes
+    // Strict Route Permission Enforcement with AccessDeniedScreen + Firestore Audit Logging
     val fullScreenRoutes = setOf(
         "new_order", "order_detail", "workshop_tracker", "ai_assistant", "catalog", "stocks",
         "deliveries", "staff", "roles_rbac", "claims", "client_portal",
@@ -223,16 +253,13 @@ fun MainWorkspace(
         "marketing", "help", "settings"
     )
     if (currentRoute in fullScreenRoutes && !activeRoleSession.canAccessRoute(currentRoute)) {
-        Scaffold { pad ->
-            RestrictedAccessCard(
-                session = activeRoleSession,
-                requiredPermission = RolePermissionMatrix.requiredPermissionForRoute(currentRoute),
-                onBackToDashboard = { currentRoute = "dashboard" },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(pad)
-            )
-        }
+        AccessDeniedScreen(
+            session = activeRoleSession,
+            attemptedRoute = currentRoute,
+            requiredPermission = RolePermissionMatrix.requiredPermissionForRoute(currentRoute),
+            onLogAccessDenied = { route, perm -> viewModel.logUnauthorizedNavigation(route, perm) },
+            onBackToDashboard = { currentRoute = "dashboard" }
+        )
         return
     }
 
@@ -257,6 +284,7 @@ fun MainWorkspace(
                         disc, expFee, delFee, tax, paid, method, delReq, delZone, emp, sig, obs, due
                     ) { createdId ->
                         selectedOrderId = createdId
+                        autoOpenThermalPrintForOrderId = createdId
                         currentRoute = "order_detail"
                     }
                 },
@@ -274,15 +302,17 @@ fun MainWorkspace(
                     employees = employees,
                     isBusy = isBusy,
                     activeSession = activeRoleSession,
+                    autoOpenPrintPreview = autoOpenThermalPrintForOrderId == order.id,
+                    onAutoPrintConsumed = { autoOpenThermalPrintForOrderId = null },
                     onUpdateStatus = { o, st, qc -> viewModel.updateOrderStatus(o, st, qualityChecked = qc) },
                     onRecordPayment = { o, amt, m -> viewModel.recordOrderPayment(o, amt, m) },
                     onAssignDelivery = { o, drv, zone, done -> viewModel.assignDelivery(o, drv, zone, done) },
                     onCreateClaim = { claim -> viewModel.createClaim(claim) },
-                    onBack = { currentRoute = if (activeRoleSession.has(AccessPermission.VIEW_ORDERS)) "orders" else "dashboard" }
+                    onBack = { currentRoute = if (activeRoleSession.canAccessRoute("orders")) "orders" else "dashboard" }
                 )
                 return
             } else {
-                currentRoute = if (activeRoleSession.has(AccessPermission.VIEW_ORDERS)) "orders" else "dashboard"
+                currentRoute = if (activeRoleSession.canAccessRoute("orders")) "orders" else "dashboard"
             }
         }
 
@@ -428,6 +458,7 @@ fun MainWorkspace(
                         dueDateMillis = due
                     ) { createdId ->
                         selectedOrderId = createdId
+                        autoOpenThermalPrintForOrderId = createdId
                         currentRoute = "order_detail"
                     }
                 },
@@ -504,12 +535,21 @@ fun MainWorkspace(
         }
 
         "settings" -> {
-            SettingsScreen(
+            AgencySettingsScreen(
                 company = company,
+                services = services,
+                transactions = transactions,
                 userProfile = userProfile,
                 authUiState = authUiState,
                 isDarkTheme = isDarkTheme,
+                isBusy = isBusy,
                 activeSession = activeRoleSession,
+                onSaveCompanyConfig = { updated -> viewModel.saveCompanyConfig(updated) },
+                onSaveService = { srv -> viewModel.saveService(srv) },
+                onSeedDefaultCatalog = { viewModel.seedStarterServices() },
+                onRecordDailyCashClose = { summary, justification, onDone ->
+                    viewModel.recordDailyCashCloseZ(company, summary, justification, onDone)
+                },
                 onToggleDarkTheme = onToggleDarkTheme,
                 onReopenSetupWizard = onReopenSetupWizard,
                 onOpenRbacMatrix = { currentRoute = "roles_rbac" },
@@ -684,7 +724,7 @@ fun MainWorkspace(
 
                         Spacer(Modifier.height(10.dp))
 
-                        if (activeRoleSession.has(AccessPermission.MANAGE_SAAS_ADMIN)) {
+                        if (activeRoleSession.has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA)) {
                             Card(
                                 onClick = {
                                     currentRoute = "saas_admin"
@@ -940,62 +980,144 @@ fun MainWorkspace(
                             }
                         }
                     }
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        when (currentRoute) {
-                            "dashboard" -> DashboardScreen(
-                                company = company,
-                                roleSession = activeRoleSession,
-                                orders = orders,
-                                clients = clients,
-                                transactions = transactions,
-                                stocks = stocks,
-                                claims = claims,
-                                onNewOrder = { currentRoute = "new_order" },
-                                onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
-                                onQuickAdvanceStatus = { o, next ->
-                                    viewModel.updateOrderStatus(o, next, qualityChecked = next == com.example.data.OrderStatus.READY || o.qualityChecked)
-                                },
-                                onConfirmDelivery = { o ->
-                                    viewModel.assignDelivery(o, activeRoleSession.operatorName, o.deliveryZone.ifBlank { company.commune }, markDelivered = true)
-                                },
-                                onNavigateModule = { route -> currentRoute = route }
-                            )
-                            "orders" -> OrdersScreen(
-                                company = company,
-                                orders = orders,
-                                activeSession = activeRoleSession,
-                                onNewOrder = {
-                                    if (activeRoleSession.has(AccessPermission.CREATE_ORDER)) currentRoute = "new_order"
-                                },
-                                onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
-                                onQuickAdvanceStatus = { o, next -> viewModel.updateOrderStatus(o, next) }
-                            )
-                            "clients" -> ClientsScreen(
-                                company = company,
-                                clients = clients,
-                                orders = orders,
-                                activeSession = activeRoleSession,
-                                onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
-                                onSaveClient = {
-                                    if (activeRoleSession.has(AccessPermission.EDIT_CLIENTS)) viewModel.saveClient(it)
-                                },
-                                onDeleteClient = {
-                                    if (activeRoleSession.has(AccessPermission.DELETE_CLIENTS)) viewModel.deleteClient(it)
+                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        // Room Offline Cache & Auto-Sync Banner (shown whenever offline or pending orders await sync)
+                        if (!isOnline || pendingOfflineOrders.isNotEmpty() || isSyncingOffline) {
+                            Surface(
+                                color = if (!isOnline) AmberContainer else SoftBlueContainer,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("offline_sync_banner")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = when {
+                                            isSyncingOffline -> Icons.Rounded.CloudSync
+                                            !isOnline -> Icons.Rounded.CloudOff
+                                            else -> Icons.Rounded.CloudDone
+                                        },
+                                        contentDescription = null,
+                                        tint = if (!isOnline) Color(0xFFB45309) else RoyalBlue,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = when {
+                                                isSyncingOffline -> "Synchronisation Room → Cloud en cours..."
+                                                !isOnline -> "Mode hors-ligne actif (Cache local Room)"
+                                                else -> "${pendingOfflineOrders.size} commande(s) hors-ligne prête(s) à synchroniser"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MidnightNavy
+                                        )
+                                        Text(
+                                            text = if (!isOnline) {
+                                                "${pendingOfflineOrders.size} commande(s) en attente · Enregistrement continu activé"
+                                            } else {
+                                                "Synchronisation automatique dès connexion stable."
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MidnightNavy.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                    if (isOnline && pendingOfflineOrders.isNotEmpty() && !isSyncingOffline) {
+                                        TextButton(
+                                            onClick = { viewModel.syncPendingOfflineOrders() },
+                                            modifier = Modifier
+                                                .heightIn(min = 48.dp)
+                                                .testTag("sync_offline_now_btn")
+                                        ) {
+                                            Text("Synchroniser", fontWeight = FontWeight.Bold, color = RoyalBlue)
+                                        }
+                                    }
                                 }
-                            )
-                            "finance" -> FinanceScreen(
-                                company = company,
-                                orders = orders,
-                                transactions = transactions,
-                                activeSession = activeRoleSession,
-                                onAddEntry = { entry -> viewModel.addAccountingEntry(entry) },
-                                onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" }
-                            )
-                            "more" -> MoreHubScreen(
-                                activeSession = activeRoleSession,
-                                onOpenModule = { route -> currentRoute = route }
-                            )
+                            }
                         }
+
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            if (!activeRoleSession.canAccessRoute(currentRoute)) {
+                                AccessDeniedScreen(
+                                    session = activeRoleSession,
+                                    attemptedRoute = currentRoute,
+                                    requiredPermission = RolePermissionMatrix.requiredPermissionForRoute(currentRoute),
+                                    onLogAccessDenied = { route, perm -> viewModel.logUnauthorizedNavigation(route, perm) },
+                                    onBackToDashboard = { currentRoute = "dashboard" }
+                                )
+                            } else {
+                            when (currentRoute) {
+                                "dashboard" -> DashboardScreen(
+                                    company = company,
+                                    roleSession = activeRoleSession,
+                                    orders = orders,
+                                    allTenantOrders = rawOrders,
+                                    clients = clients,
+                                    transactions = transactions,
+                                    stocks = stocks,
+                                    employees = employees,
+                                    claims = claims,
+                                    auditLog = auditLog,
+                                    onSelectAgencyFilter = { agency -> viewModel.selectIsolatedAgency(agency) },
+                                    onNewOrder = { currentRoute = "new_order" },
+                                    onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
+                                    onQuickAdvanceStatus = { o, next ->
+                                        viewModel.updateOrderStatus(o, next, qualityChecked = next == com.example.data.OrderStatus.READY || o.qualityChecked)
+                                    },
+                                    onReturnToRework = { o, stage, reason ->
+                                        viewModel.returnOrderToRework(o, stage, reason)
+                                    },
+                                    onRecordPayment = { o, amt, method ->
+                                        viewModel.recordOrderPayment(o, amt, method)
+                                    },
+                                    onConfirmDeliveryWithProof = { o, recipient, note ->
+                                        viewModel.confirmDeliveryWithProof(o, recipient, note)
+                                    },
+                                    onNavigateModule = { route -> currentRoute = route }
+                                )
+                                "orders" -> OrdersScreen(
+                                    company = company,
+                                    orders = orders,
+                                    activeSession = activeRoleSession,
+                                    onNewOrder = {
+                                        if (activeRoleSession.has(AccessPermission.CREATE_ORDER)) currentRoute = "new_order"
+                                    },
+                                    onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
+                                    onQuickAdvanceStatus = { o, next -> viewModel.updateOrderStatus(o, next) }
+                                )
+                                "clients" -> ClientsScreen(
+                                    company = company,
+                                    clients = clients,
+                                    orders = orders,
+                                    activeSession = activeRoleSession,
+                                    onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" },
+                                    onSaveClient = {
+                                        if (activeRoleSession.has(AccessPermission.MANAGE_CLIENTS)) viewModel.saveClient(it)
+                                    },
+                                    onDeleteClient = {
+                                        if (activeRoleSession.has(AccessPermission.CANCEL_DELETE_ORDER)) viewModel.deleteClient(it)
+                                    }
+                                )
+                                "finance" -> FinanceScreen(
+                                    company = company,
+                                    orders = orders,
+                                    transactions = transactions,
+                                    activeSession = activeRoleSession,
+                                    onAddEntry = { entry -> viewModel.addAccountingEntry(entry) },
+                                    onOpenOrder = { id -> selectedOrderId = id; currentRoute = "order_detail" }
+                                )
+                                "more" -> MoreHubScreen(
+                                    activeSession = activeRoleSession,
+                                    onOpenModule = { route -> currentRoute = route }
+                                )
+                            }
+                        }
+                    }
                     }
                 }
             }
@@ -1079,7 +1201,7 @@ fun MainWorkspace(
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text("${ord.orderNumber} · ${ord.clientName}", fontWeight = FontWeight.SemiBold)
                                         Text(
-                                            if (activeRoleSession.has(AccessPermission.VIEW_FINANCIAL_KPIS))
+                                            if (activeRoleSession.canViewFinancialAmounts)
                                                 "${ord.orderStatusEnum().labelFr} · ${formatMoney(ord.totalAmount, company.currency)}"
                                             else ord.orderStatusEnum().labelFr,
                                             style = MaterialTheme.typography.labelSmall
@@ -1138,17 +1260,108 @@ fun MainWorkspace(
         )
     }
 
-    // Scoped Notifications & Operational Alerts Center
+    // Scoped Notifications, FCM Push Center & Operational Alerts
     if (showNotifications) {
         AlertDialog(
             onDismissRequest = { showNotifications = false },
-            title = { Text("Centre d'alertes ($alertCount)", fontWeight = FontWeight.Bold) },
+            title = { Text("Centre d'alertes & Push FCM ($alertCount)", fontWeight = FontWeight.Bold) },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (alertCount == 0) {
+                    // FCM Push Status & Android 13+ permission activator
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (notifPermissionGranted) EmeraldContainer.copy(alpha = 0.65f) else AmberContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = if (notifPermissionGranted) EmeraldSuccess else Color(0xFFB45309),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = if (notifPermissionGranted) "Notifications Push FCM actives" else "Activer les alertes Push FCM",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MidnightNavy
+                                )
+                            }
+                            Text(
+                                text = "Canaux : Nouvelles commandes caissiers & Vêtements prêts clients" +
+                                    if (fcmTopics.isNotEmpty()) " (${fcmTopics.size} topic(s) abonnés)" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MidnightNavy.copy(alpha = 0.85f)
+                            )
+                            if (!notifPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                Button(
+                                    onClick = {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .testTag("enable_fcm_notifications_btn")
+                                ) {
+                                    Text("Autoriser les notifications", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Pending Room Offline Orders Queue
+                    if (pendingOfflineOrders.isNotEmpty()) {
+                        Text(
+                            "File hors-ligne Room (${pendingOfflineOrders.size})",
+                            fontWeight = FontWeight.Bold,
+                            color = RoyalBlue
+                        )
+                        pendingOfflineOrders.take(5).forEach { off ->
+                            Card(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("${off.orderNumber} · ${off.clientName}", fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        "En cache local (${off.syncStatus}) · Sync auto au retour réseau",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = RoyalBlue
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Recent FCM Push Feed (Cashier new orders & Client garments ready)
+                    if (pushNotifications.isNotEmpty()) {
+                        Text(
+                            "Alertes Push récentes (${pushNotifications.size})",
+                            fontWeight = FontWeight.Bold,
+                            color = MidnightNavy
+                        )
+                        pushNotifications.take(5).forEach { pn ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = SoftBlueContainer.copy(alpha = 0.4f))
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(pn.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+                                    Text(pn.body, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+
+                    if (alertCount == 0 && pushNotifications.isEmpty()) {
                         Text("Aucune alerte active dans votre périmètre (${activeRoleSession.scopeLabel()}).", style = MaterialTheme.typography.bodySmall)
                     } else {
                         if (lateOrders.isNotEmpty()) {

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -15,9 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -492,7 +495,7 @@ fun PosCashRegisterScreen(
  * Écran dédié "Facturation" fidèle à la maquette "Facturation (FAC-2025-xxxx)" :
  * Recherche par N° facture/client, filtre statut (Payée, Acompte, En attente), export CSV et impression Facture PDF A4.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BillingInvoicesScreen(
     company: CompanyConfig,
@@ -621,9 +624,18 @@ fun BillingInvoicesScreen(
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 listOf("ALL" to "Toutes (${orders.size})", "PAID" to "Payées", "PENDING" to "En attente / Acompte").forEach { (k, lbl) ->
-                    FilterChip(selected = statusFilter == k, onClick = { statusFilter = k }, label = { Text(lbl) })
+                    FilterChip(
+                        selected = statusFilter == k,
+                        onClick = { statusFilter = k },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        label = { Text(lbl) }
+                    )
                 }
             }
 
@@ -636,7 +648,7 @@ fun BillingInvoicesScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     items(filtered, key = { it.id }) { o ->
@@ -648,28 +660,28 @@ fun BillingInvoicesScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                FlowRow(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column {
                                         Text(
                                             text = invoiceNum,
                                             style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
                                             fontWeight = FontWeight.ExtraBold,
                                             color = RoyalBlue
                                         )
-                                        Text("${o.clientName} · ${formatDateTime(o.createdAt)}", style = MaterialTheme.typography.bodySmall)
+                                        Text("${o.clientName} · ${formatDateTime(o.createdAt)}", style = MaterialTheme.typography.bodySmall, softWrap = true)
                                     }
                                     PaymentStatusChip(o.paymentStatusEnum())
                                 }
                                 HorizontalDivider()
-                                Row(
+                                FlowRow(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Column {
                                         Text("Montant TTC : ${formatMoney(o.totalAmount, currency)}", fontWeight = FontWeight.Bold)
@@ -677,10 +689,14 @@ fun BillingInvoicesScreen(
                                             Text("Reste dû : ${formatMoney(o.remainingAmount, currency)}", style = MaterialTheme.typography.labelSmall, color = CrimsonDanger)
                                         }
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
                                         OutlinedButton(
                                             onClick = { printSingleInvoice(o) },
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            modifier = Modifier.heightIn(min = 48.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                         ) {
                                             Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(Modifier.width(4.dp))
@@ -695,9 +711,10 @@ fun BillingInvoicesScreen(
                                                         "Bonjour ${o.clientName}, voici votre facture $invoiceNum chez ${company.companyName} d'un montant de ${formatMoney(o.totalAmount, currency)} (Payé : ${formatMoney(o.paidAmount, currency)}, Reste : ${formatMoney(o.remainingAmount, currency)})."
                                                     )
                                                 },
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                                modifier = Modifier.heightIn(min = 48.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                             ) {
-                                                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Rounded.Share, contentDescription = "Partager WhatsApp", modifier = Modifier.size(16.dp))
                                             }
                                         }
                                     }
@@ -834,57 +851,85 @@ fun ReportsAnalyticsScreen(
                     }
                 }
 
-                // Top 4 Pastel Sparkline KPI strip matching "Rapports & Analyses" mockup
+                // Adaptive Pastel Sparkline KPI strip (1-col < 360dp, 2x2 phone, 4-col tablet)
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        SparklineKpiCard(
-                            title = "Chiffre d'affaires",
-                            value = formatMoney(totalRevenue, currency),
-                            trendLabel = "+18%",
-                            icon = Icons.Rounded.TrendingUp,
-                            accentColor = EmeraldSuccess,
-                            pastelTint = PastelGreenTint,
-                            pastelBorder = PastelGreenBorder,
-                            sparklinePoints = listOf(0.30f, 0.45f, 0.40f, 0.68f, 0.78f, 0.96f),
-                            modifier = Modifier.weight(1f)
-                        )
-                        SparklineKpiCard(
-                            title = "Commandes",
-                            value = "${orders.size}",
-                            trendLabel = "${orders.count { it.orderStatusEnum() == OrderStatus.READY }} prêtes",
-                            icon = Icons.Rounded.Checkroom,
-                            accentColor = RoyalBlue,
-                            pastelTint = PastelBlueTint,
-                            pastelBorder = PastelBlueBorder,
-                            sparklinePoints = listOf(0.38f, 0.50f, 0.62f, 0.58f, 0.74f, 0.88f),
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        SparklineKpiCard(
-                            title = "Clients actifs",
-                            value = "${clients.size}",
-                            trendLabel = "${clients.count { it.category == "VIP" }} VIP",
-                            icon = Icons.Rounded.People,
-                            accentColor = VioletAccent,
-                            pastelTint = PastelVioletTint,
-                            pastelBorder = PastelVioletBorder,
-                            sparklinePoints = listOf(0.40f, 0.48f, 0.52f, 0.66f, 0.72f, 0.85f),
-                            modifier = Modifier.weight(1f)
-                        )
-                        SparklineKpiCard(
-                            title = "Taux de fidélité",
-                            value = "$loyaltyRate%",
-                            trendLabel = "Clients fidèles",
-                            icon = Icons.Rounded.BarChart,
-                            accentColor = AmberWarning,
-                            pastelTint = PastelAmberTint,
-                            pastelBorder = PastelAmberBorder,
-                            sparklinePoints = listOf(0.55f, 0.60f, 0.68f, 0.72f, 0.82f, 0.90f),
-                            modifier = Modifier.weight(1f)
-                        )
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val kpiCa: @Composable (Modifier) -> Unit = { m ->
+                            SparklineKpiCard(
+                                title = "Chiffre d'affaires",
+                                value = formatMoney(totalRevenue, currency),
+                                trendLabel = "+18%",
+                                icon = Icons.Rounded.TrendingUp,
+                                accentColor = EmeraldSuccess,
+                                pastelTint = PastelGreenTint,
+                                pastelBorder = PastelGreenBorder,
+                                sparklinePoints = listOf(0.30f, 0.45f, 0.40f, 0.68f, 0.78f, 0.96f),
+                                modifier = m
+                            )
+                        }
+                        val kpiOrders: @Composable (Modifier) -> Unit = { m ->
+                            SparklineKpiCard(
+                                title = "Commandes",
+                                value = "${orders.size}",
+                                trendLabel = "${orders.count { it.orderStatusEnum() == OrderStatus.READY }} prêtes",
+                                icon = Icons.Rounded.Checkroom,
+                                accentColor = RoyalBlue,
+                                pastelTint = PastelBlueTint,
+                                pastelBorder = PastelBlueBorder,
+                                sparklinePoints = listOf(0.38f, 0.50f, 0.62f, 0.58f, 0.74f, 0.88f),
+                                modifier = m
+                            )
+                        }
+                        val kpiClients: @Composable (Modifier) -> Unit = { m ->
+                            SparklineKpiCard(
+                                title = "Clients actifs",
+                                value = "${clients.size}",
+                                trendLabel = "${clients.count { it.category == "VIP" }} VIP",
+                                icon = Icons.Rounded.People,
+                                accentColor = VioletAccent,
+                                pastelTint = PastelVioletTint,
+                                pastelBorder = PastelVioletBorder,
+                                sparklinePoints = listOf(0.40f, 0.48f, 0.52f, 0.66f, 0.72f, 0.85f),
+                                modifier = m
+                            )
+                        }
+                        val kpiLoyalty: @Composable (Modifier) -> Unit = { m ->
+                            SparklineKpiCard(
+                                title = "Taux de fidélité",
+                                value = "$loyaltyRate%",
+                                trendLabel = "Clients fidèles",
+                                icon = Icons.Rounded.BarChart,
+                                accentColor = AmberWarning,
+                                pastelTint = PastelAmberTint,
+                                pastelBorder = PastelAmberBorder,
+                                sparklinePoints = listOf(0.55f, 0.60f, 0.68f, 0.72f, 0.82f, 0.90f),
+                                modifier = m
+                            )
+                        }
+                        when {
+                            maxWidth >= 720.dp -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                kpiCa(Modifier.weight(1f))
+                                kpiOrders(Modifier.weight(1f))
+                                kpiClients(Modifier.weight(1f))
+                                kpiLoyalty(Modifier.weight(1f))
+                            }
+                            maxWidth < 360.dp -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                kpiCa(Modifier.fillMaxWidth())
+                                kpiOrders(Modifier.fillMaxWidth())
+                                kpiClients(Modifier.fillMaxWidth())
+                                kpiLoyalty(Modifier.fillMaxWidth())
+                            }
+                            else -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                    kpiCa(Modifier.weight(1f))
+                                    kpiOrders(Modifier.weight(1f))
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                    kpiClients(Modifier.weight(1f))
+                                    kpiLoyalty(Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
                 }
 

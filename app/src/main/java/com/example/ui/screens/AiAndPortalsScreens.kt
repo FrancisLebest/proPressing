@@ -117,7 +117,7 @@ fun AiAssistantScreen(
 ) {
     BackHandler { onBack() }
     var prompt by remember { mutableStateOf("") }
-    val canSeeFinances = activeSession.has(AccessPermission.VIEW_FINANCIAL_KPIS)
+    val canSeeFinances = activeSession.canViewFinancialAmounts
 
     val quickPrompts = if (canSeeFinances) {
         listOf(
@@ -719,7 +719,7 @@ fun SettingsScreen(
                         RoleBadgeChip(role = activeSession.role)
                         Text(activeSession.scopeLabel(), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MidnightNavy)
                     }
-                    if (activeSession.has(AccessPermission.MANAGE_STAFF_AND_ROLES)) {
+                    if (activeSession.has(AccessPermission.MANAGE_USERS_AND_ROLES) || activeSession.has(AccessPermission.EDIT_PRIVILEGE_MATRIX)) {
                         OutlinedButton(onClick = onOpenRbacMatrix) {
                             Icon(Icons.Rounded.Security, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))

@@ -337,25 +337,31 @@ fun FinanceScreen(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Ventilation Trésorerie & Mobile Money", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Ventilation Trésorerie & Mobile Money", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, softWrap = true)
                                 byMethod.forEach { (method, inc, out) ->
                                     val net = inc - out
-                                    Row(
+                                    FlowRow(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Column {
-                                            Text(method.labelFr, fontWeight = FontWeight.SemiBold)
-                                            Text("Compte ${method.syscohadaTreasuryAccount} · Entrées ${formatMoney(inc, currency)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(method.labelFr, fontWeight = FontWeight.SemiBold, softWrap = true)
+                                            Text(
+                                                "Compte ${method.syscohadaTreasuryAccount} · Entrées ${formatMoney(inc, currency)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                softWrap = true
+                                            )
                                         }
                                         Text(
                                             formatMoney(net, currency),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
                                             fontWeight = FontWeight.Bold,
                                             color = if (net >= 0) EmeraldSuccess else CrimsonDanger
                                         )
@@ -382,22 +388,24 @@ fun FinanceScreen(
                             val isCredit = tx.entryType == "REVENUE" || tx.entryType == "CASH_OPEN"
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
-                                Row(
+                                FlowRow(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
+                                        .padding(16.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(tx.label, fontWeight = FontWeight.SemiBold)
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(tx.label, fontWeight = FontWeight.SemiBold, softWrap = true)
                                         Text(
                                             "${tx.reference} · Cpt ${tx.syscohadaAccount} · ${PaymentMethod.fromRaw(tx.paymentMethod).labelFr}",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            softWrap = true
                                         )
                                         Text(formatDateTime(tx.createdAt), style = MaterialTheme.typography.labelSmall)
                                     }
@@ -419,16 +427,17 @@ fun FinanceScreen(
                         val groupedAccounts = transactions.groupBy { it.syscohadaAccount }
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Balance des Comptes SYSCOHADA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Balance des Comptes SYSCOHADA", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, softWrap = true)
                                 Text(
                                     "Piste d'audit immuable (aucune suppression silencieuse autorisée). Consultez un expert-comptable pour clôture fiscale.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    softWrap = true
                                 )
                                 HorizontalDivider()
                                 if (groupedAccounts.isEmpty()) {
@@ -436,41 +445,55 @@ fun FinanceScreen(
                                 } else {
                                     groupedAccounts.forEach { (acct, entries) ->
                                         val total = entries.sumOf { it.amount }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Compte $acct (${entries.first().category})", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                            Text(formatMoney(total, currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = RoyalBlue)
+                                        FlowRow(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text("Compte $acct (${entries.first().category})", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, softWrap = true)
+                                            Text(formatMoney(total, currency), style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily), fontWeight = FontWeight.Bold, color = RoyalBlue)
                                         }
                                     }
                                 }
                                 HorizontalDivider()
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("Total Produits (Classe 7)", fontWeight = FontWeight.SemiBold)
                                     Text(formatMoney(totalRevenue, currency), color = EmeraldSuccess, fontWeight = FontWeight.Bold)
                                 }
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("Total Charges (Classe 6)", fontWeight = FontWeight.SemiBold)
                                     Text(formatMoney(totalExpenses, currency), color = CrimsonDanger, fontWeight = FontWeight.Bold)
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    FlowRow(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text("RÉSULTAT NET", fontWeight = FontWeight.ExtraBold)
-                                        Text(formatMoney(netProfit, currency), fontWeight = FontWeight.ExtraBold, color = RoyalBlue)
+                                        Text(
+                                            formatMoney(netProfit, currency),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = RoyalBlue
+                                        )
                                     }
                                 }
                                 OutlinedButton(
                                     onClick = { printHtmlDocument(context, "Rapport_SYSCOHADA_${company.companyName}", buildFinancialReportHtml()) },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Print, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("Imprimer / Exporter Rapport PDF")
+                                    Text("Imprimer / Exporter Rapport PDF", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -482,37 +505,42 @@ fun FinanceScreen(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Ouverture & Fermeture de Caisse (Compte 571)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text("Enregistrez votre fonds de caisse initial et la clôture journalière dans le journal immuable.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Ouverture & Fermeture de Caisse (Compte 571)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, softWrap = true)
+                                Text("Enregistrez votre fonds de caisse initial et la clôture journalière dans le journal immuable.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = true)
                                 if (canManageCash) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         Button(
                                             onClick = {
                                                 defaultType = "CASH_OPEN"
                                                 showAddDialog = true
                                             },
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.heightIn(min = 48.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess)
-                                        ) { Text("Ouvrir Caisse") }
+                                        ) { Text("Ouvrir Caisse", fontWeight = FontWeight.Bold) }
                                         Button(
                                             onClick = {
                                                 defaultType = "CASH_CLOSE"
                                                 showAddDialog = true
                                             },
-                                            modifier = Modifier.weight(1f),
+                                            modifier = Modifier.heightIn(min = 48.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
-                                        ) { Text("Clôturer Caisse") }
+                                        ) { Text("Clôturer Caisse", fontWeight = FontWeight.Bold) }
                                     }
                                 } else {
                                     Text(
                                         "Mode consultation seule : ouverture et clôture de caisse réservées aux rôles habilités.",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        softWrap = true
                                     )
                                 }
                             }
@@ -536,22 +564,42 @@ fun FinanceScreen(
                             Card(
                                 onClick = { onOpenOrder(ord.id) },
                                 modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = BorderStroke(1.dp, AmberWarning)
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("${ord.clientName} · ${ord.orderNumber}", fontWeight = FontWeight.Bold)
-                                        Text("Total ${formatMoney(ord.totalAmount, currency)} · Payé ${formatMoney(ord.paidAmount, currency)}", style = MaterialTheme.typography.labelSmall)
+                                    FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("${ord.clientName} · ${ord.orderNumber}", fontWeight = FontWeight.Bold, softWrap = true)
+                                        Text(
+                                            formatMoney(ord.remainingAmount, currency),
+                                            style = MaterialTheme.typography.titleSmall.copy(fontFamily = JetBrainsMonoFamily),
+                                            color = CrimsonDanger,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
                                     }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(formatMoney(ord.remainingAmount, currency), color = CrimsonDanger, fontWeight = FontWeight.ExtraBold)
+                                    FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            "Total ${formatMoney(ord.totalAmount, currency)} · Payé ${formatMoney(ord.paidAmount, currency)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            softWrap = true
+                                        )
                                         if (ord.clientPhone.isNotBlank()) {
-                                            TextButton(
+                                            OutlinedButton(
                                                 onClick = {
                                                     openWhatsAppIntent(
                                                         context,
@@ -559,8 +607,9 @@ fun FinanceScreen(
                                                         "Bonjour ${ord.clientName}, solde de ${formatMoney(ord.remainingAmount, currency)} en attente sur votre commande ${ord.orderNumber} chez ${company.companyName}."
                                                     )
                                                 },
-                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                                            ) { Text("Relancer", style = MaterialTheme.typography.labelSmall) }
+                                                modifier = Modifier.heightIn(min = 48.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) { Text("Relancer WhatsApp", style = MaterialTheme.typography.labelMedium) }
                                         }
                                     }
                                 }

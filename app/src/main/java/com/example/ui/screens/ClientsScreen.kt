@@ -115,9 +115,9 @@ fun ClientsScreen(
     var viewingClient by remember { mutableStateOf<ClientRecord?>(null) }
     var showEditor by remember { mutableStateOf(false) }
 
-    val canEditClients = activeSession.has(AccessPermission.EDIT_CLIENTS)
-    val canDeleteClients = activeSession.has(AccessPermission.DELETE_CLIENTS)
-    val canExportClients = activeSession.has(AccessPermission.VIEW_REPORTS) || canEditClients
+    val canEditClients = activeSession.has(AccessPermission.MANAGE_CLIENTS)
+    val canDeleteClients = activeSession.has(AccessPermission.CANCEL_DELETE_ORDER)
+    val canExportClients = activeSession.has(AccessPermission.EXPORT_FINANCIAL_REPORTS) || canEditClients
     val showFinancials = activeSession.canViewFinancialAmounts
 
     fun exportClientsCsv(): String = buildString {

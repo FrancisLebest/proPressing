@@ -171,9 +171,18 @@ data class CompanyConfig(
     val standardDelayHours: Long = 48L,
     val expressDelayHours: Long = 24L,
     val expressSurchargePercent: Double = 50.0,
+    val ultraExpressDelayHours: Long = 6L,
+    val ultraExpressSurchargePercent: Double = 100.0,
+    val maxCashierDiscountPercent: Double = 10.0,
+    val corporateDiscountPercent: Double = 15.0,
     val orderPrefix: String = "PRESS-2026",
     val receiptFooter: String = "Merci pour votre confiance. Conservation maximale 30 jours.",
     val receiptFormat: String = "THERMAL_80",
+    val autoCutPaper: Boolean = true,
+    val autoPrintLabelsOnPayment: Boolean = false,
+    val defaultPrinterName: String = "",
+    val defaultPrinterAddress: String = "",
+    val lastCashCloseDate: String = "",
     val acceptedPayments: List<String> = listOf("ESPECES", "ORANGE_MONEY", "MTN_MOMO", "WAVE", "MOOV_MONEY"),
     val agencies: List<String> = listOf("Agence Principale"),
     val smsNotificationsEnabled: Boolean = true,
@@ -208,9 +217,18 @@ data class CompanyConfig(
         "standardDelayHours" to standardDelayHours.coerceIn(1L, 720L),
         "expressDelayHours" to expressDelayHours.coerceIn(1L, 168L),
         "expressSurchargePercent" to expressSurchargePercent.coerceIn(0.0, 200.0),
+        "ultraExpressDelayHours" to ultraExpressDelayHours.coerceIn(1L, 168L),
+        "ultraExpressSurchargePercent" to ultraExpressSurchargePercent.coerceIn(0.0, 300.0),
+        "maxCashierDiscountPercent" to maxCashierDiscountPercent.coerceIn(0.0, 100.0),
+        "corporateDiscountPercent" to corporateDiscountPercent.coerceIn(0.0, 100.0),
         "orderPrefix" to orderPrefix.trim().ifBlank { "PRESS-2026" }.take(20),
         "receiptFooter" to receiptFooter.trim().take(300),
         "receiptFormat" to if (receiptFormat in listOf("THERMAL_58", "THERMAL_80", "A4_PDF")) receiptFormat else "THERMAL_80",
+        "autoCutPaper" to autoCutPaper,
+        "autoPrintLabelsOnPayment" to autoPrintLabelsOnPayment,
+        "defaultPrinterName" to defaultPrinterName.trim().take(100),
+        "defaultPrinterAddress" to defaultPrinterAddress.trim().take(40),
+        "lastCashCloseDate" to lastCashCloseDate.trim().take(20),
         "acceptedPayments" to acceptedPayments.take(10),
         "agencies" to agencies.filter { it.isNotBlank() }.ifEmpty { listOf("Agence Principale") }.take(20),
         "smsNotificationsEnabled" to smsNotificationsEnabled,
@@ -245,9 +263,18 @@ data class CompanyConfig(
         "standardDelayHours" to standardDelayHours.coerceIn(1L, 720L),
         "expressDelayHours" to expressDelayHours.coerceIn(1L, 168L),
         "expressSurchargePercent" to expressSurchargePercent.coerceIn(0.0, 200.0),
+        "ultraExpressDelayHours" to ultraExpressDelayHours.coerceIn(1L, 168L),
+        "ultraExpressSurchargePercent" to ultraExpressSurchargePercent.coerceIn(0.0, 300.0),
+        "maxCashierDiscountPercent" to maxCashierDiscountPercent.coerceIn(0.0, 100.0),
+        "corporateDiscountPercent" to corporateDiscountPercent.coerceIn(0.0, 100.0),
         "orderPrefix" to orderPrefix.trim().ifBlank { "PRESS-2026" }.take(20),
         "receiptFooter" to receiptFooter.trim().take(300),
         "receiptFormat" to if (receiptFormat in listOf("THERMAL_58", "THERMAL_80", "A4_PDF")) receiptFormat else "THERMAL_80",
+        "autoCutPaper" to autoCutPaper,
+        "autoPrintLabelsOnPayment" to autoPrintLabelsOnPayment,
+        "defaultPrinterName" to defaultPrinterName.trim().take(100),
+        "defaultPrinterAddress" to defaultPrinterAddress.trim().take(40),
+        "lastCashCloseDate" to lastCashCloseDate.trim().take(20),
         "acceptedPayments" to acceptedPayments.take(10),
         "agencies" to agencies.filter { it.isNotBlank() }.ifEmpty { listOf("Agence Principale") }.take(20),
         "smsNotificationsEnabled" to smsNotificationsEnabled,
@@ -632,6 +659,85 @@ data class ClaimRecord(
         "resolutionNote" to resolutionNote.trim().take(400),
         "createdAt" to FieldValue.serverTimestamp(),
         "updatedAt" to FieldValue.serverTimestamp()
+    )
+}
+
+@Keep
+@IgnoreExtraProperties
+data class AuditLogRecord(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val actor: String = "",
+    val roleLabel: String = "",
+    val scopeLabel: String = "",
+    val action: String = "",
+    val route: String = "",
+    val allowed: Boolean = true,
+    val createdAt: Timestamp? = null
+) {
+    fun toCreateMap(uid: String): Map<String, Any> = mapOf(
+        "userId" to uid,
+        "actor" to actor.trim().ifBlank { "Utilisateur" }.take(100),
+        "roleLabel" to roleLabel.trim().ifBlank { "Opérateur" }.take(60),
+        "scopeLabel" to scopeLabel.trim().ifBlank { "Agence" }.take(120),
+        "action" to action.trim().ifBlank { "Événement sécurité" }.take(240),
+        "route" to route.trim().take(60),
+        "allowed" to allowed,
+        "createdAt" to FieldValue.serverTimestamp()
+    )
+}
+
+@Keep
+@IgnoreExtraProperties
+data class FcmTokenRecord(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val token: String = "",
+    val role: String = "STAFF",
+    val agencyName: String = "",
+    val topics: List<String> = emptyList(),
+    val platform: String = "ANDROID",
+    val createdAt: Timestamp? = null,
+    val updatedAt: Timestamp? = null
+) {
+    fun toCreateMap(uid: String): Map<String, Any> = mapOf(
+        "userId" to uid,
+        "token" to token.trim().take(300),
+        "role" to role.trim().ifBlank { "STAFF" }.take(40),
+        "agencyName" to agencyName.trim().take(100),
+        "topics" to topics.filter { it.isNotBlank() }.take(15),
+        "platform" to "ANDROID",
+        "createdAt" to FieldValue.serverTimestamp(),
+        "updatedAt" to FieldValue.serverTimestamp()
+    )
+}
+
+@Keep
+@IgnoreExtraProperties
+data class PushNotificationRecord(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val eventType: String = "NEW_ORDER_CASHIER",
+    val targetRole: String = "CAISSIER",
+    val agencyName: String = "",
+    val orderNumber: String = "",
+    val clientPhone: String = "",
+    val title: String = "",
+    val body: String = "",
+    val delivered: Boolean = false,
+    val createdAt: Timestamp? = null
+) {
+    fun toCreateMap(uid: String): Map<String, Any> = mapOf(
+        "userId" to uid,
+        "eventType" to if (eventType in listOf("NEW_ORDER_CASHIER", "ORDER_READY_CLIENT", "OFFLINE_SYNCED")) eventType else "NEW_ORDER_CASHIER",
+        "targetRole" to targetRole.trim().ifBlank { "CAISSIER" }.take(40),
+        "agencyName" to agencyName.trim().take(100),
+        "orderNumber" to orderNumber.trim().take(40),
+        "clientPhone" to clientPhone.trim().take(30),
+        "title" to title.trim().ifBlank { "Pressing Pro" }.take(120),
+        "body" to body.trim().ifBlank { "Mise à jour commande" }.take(300),
+        "delivered" to delivered,
+        "createdAt" to FieldValue.serverTimestamp()
     )
 }
 

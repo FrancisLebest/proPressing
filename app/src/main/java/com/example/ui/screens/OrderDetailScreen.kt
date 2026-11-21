@@ -57,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,12 +76,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.core.decodeBase64ToBitmap
 import com.example.core.dialPhoneIntent
-import com.example.core.escapeHtml
 import com.example.core.formatDateMillis
 import com.example.core.formatDateTime
 import com.example.core.formatMoney
 import com.example.core.openWhatsAppIntent
-import com.example.core.printHtmlDocument
 import com.example.core.shareTextIntent
 import com.example.data.AccessPermission
 import com.example.data.ActiveRoleSession
@@ -93,8 +92,8 @@ import com.example.data.PressingOrder
 import com.example.ui.components.HorizontalOrderTimeline
 import com.example.ui.components.OrderStatusChip
 import com.example.ui.components.PaymentStatusChip
-import com.example.ui.components.QrCodeCanvas
 import com.example.ui.components.RoleBadgeChip
+import com.example.ui.components.ThermalPrintPreviewDialog
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.data.OrderGarmentItem
 import com.example.ui.theme.AmberContainer
@@ -115,6 +114,8 @@ fun OrderDetailScreen(
     employees: List<EmployeeRecord>,
     isBusy: Boolean,
     activeSession: ActiveRoleSession = ActiveRoleSession(),
+    autoOpenPrintPreview: Boolean = false,
+    onAutoPrintConsumed: () -> Unit = {},
     onUpdateStatus: (PressingOrder, OrderStatus, Boolean) -> Unit,
     onRecordPayment: (PressingOrder, Long, PaymentMethod) -> Unit,
     onAssignDelivery: (PressingOrder, String, String, Boolean) -> Unit,
@@ -129,14 +130,21 @@ fun OrderDetailScreen(
     val parsedItems = remember(order.items) { order.parsedItems() }
     val showFinancials = activeSession.canViewFinancialAmounts
     val canCollectPayment = activeSession.has(AccessPermission.COLLECT_PAYMENT)
-    val canDispatchDelivery = activeSession.has(AccessPermission.DISPATCH_DELIVERIES)
-    val canCreateClaims = activeSession.has(AccessPermission.MANAGE_CLAIMS)
+    val canDispatchDelivery = activeSession.has(AccessPermission.MANAGE_DELIVERY_RUNS)
+    val canCreateClaims = activeSession.has(AccessPermission.HANDLE_SAV_CLAIMS)
 
     var showPaymentDialog by remember { mutableStateOf(false) }
     var showDeliveryDialog by remember { mutableStateOf(false) }
     var showReceiptDialog by remember { mutableStateOf(false) }
     var showClaimDialog by remember { mutableStateOf(false) }
     var previewPhotoGarment by remember { mutableStateOf<OrderGarmentItem?>(null) }
+
+    LaunchedEffect(autoOpenPrintPreview) {
+        if (autoOpenPrintPreview) {
+            showReceiptDialog = true
+            onAutoPrintConsumed()
+        }
+    }
 
     fun buildReceiptText(): String = buildString {
         appendLine("================================")
@@ -656,165 +664,18 @@ fun OrderDetailScreen(
         )
     }
 
-    // Visual Documents & Printing Center Dialog (Ticket, Facture A4, Bon de Livraison, Étiquettes)
+    // Responsive Thermal Receipt (58mm / 80mm) & Individual Physical Garment Labels Preview
     if (showReceiptDialog) {
-        val availableDocModes = if (showFinancials) {
-            listOf(
-                "TICKET" to "Ticket QR",
-                "INVOICE" to "Facture A4",
-                "DELIVERY" to "Bon Livraison",
-                "LABELS" to "Étiquettes"
-            )
-        } else {
-            listOf(
-                "LABELS" to "Étiquettes",
-                "DELIVERY" to "Bon Livraison"
-            )
-        }
-        var docMode by remember(showFinancials) { mutableStateOf(availableDocModes.first().first) }
-
-        fun buildDocumentHtml(): String = when (docMode) {
-            "INVOICE" -> buildString {
-                append("<html><body style='font-family:sans-serif;padding:24px;color:#081B4B;'>")
-                append("<h2 style='margin:0;'>FACTURE PRO · ${escapeHtml(order.orderNumber)}</h2>")
-                append("<p style='margin:4px 0;color:#4B5563;'><b>${escapeHtml(company.companyName)}</b> (${escapeHtml(company.legalName)}) · RCCM ${escapeHtml(company.rccm.ifBlank { "-" })} · IFU ${escapeHtml(company.nif.ifBlank { "-" })}<br/>${escapeHtml(company.address.ifBlank { company.commune })}, ${escapeHtml(company.city)} · ${escapeHtml(company.phone)}</p><hr/>")
-                append("<p><b>Client :</b> ${escapeHtml(order.clientName)} (${escapeHtml(order.clientPhone)})<br/><b>Date dépôt :</b> ${formatDateTime(order.createdAt)} · <b>Retrait prévu :</b> ${formatDateMillis(order.dueDateMillis)}</p>")
-                append("<table style='width:100%;border-collapse:collapse;margin-top:12px;'>")
-                append("<tr style='background:#EEF2FF;text-align:left;'><th style='padding:8px;'>Désignation</th><th style='padding:8px;'>Service</th><th style='padding:8px;'>Qté</th><th style='padding:8px;'>Montant</th></tr>")
-                parsedItems.forEach { item ->
-                    append("<tr><td style='padding:8px;border-bottom:1px solid #E5E7EB;'>${escapeHtml(item.garmentName)}</td><td style='padding:8px;border-bottom:1px solid #E5E7EB;'>${escapeHtml(item.serviceName)}</td><td style='padding:8px;border-bottom:1px solid #E5E7EB;'>${item.quantity}</td><td style='padding:8px;border-bottom:1px solid #E5E7EB;'><b>${formatMoney(item.lineTotal, currency)}</b></td></tr>")
-                }
-                append("</table>")
-                append("<div style='text-align:right;margin-top:14px;'>")
-                append("<p>Sous-total : ${formatMoney(order.subtotal, currency)}<br/>")
-                if (order.discountAmount > 0) append("Remise : -${formatMoney(order.discountAmount, currency)}<br/>")
-                if (order.expressFee > 0) append("Express : +${formatMoney(order.expressFee, currency)}<br/>")
-                if (order.deliveryFee > 0) append("Livraison : +${formatMoney(order.deliveryFee, currency)}<br/>")
-                if (order.taxAmount > 0) append("TVA : +${formatMoney(order.taxAmount, currency)}<br/>")
-                append("<b>TOTAL TTC : ${formatMoney(order.totalAmount, currency)}</b><br/>")
-                append("Payé (${escapeHtml(order.paymentMethodEnum().labelFr)}) : ${formatMoney(order.paidAmount, currency)}<br/>")
-                append("<b>RESTE À PAYER : ${formatMoney(order.remainingAmount, currency)}</b></p></div>")
-                append("<p style='font-size:11px;color:#6B7280;'>${escapeHtml(company.receiptFooter)}</p></body></html>")
-            }
-            "DELIVERY" -> buildString {
-                append("<html><body style='font-family:sans-serif;padding:24px;color:#081B4B;'>")
-                append("<h2>BON DE LIVRAISON · ${escapeHtml(order.orderNumber)}</h2>")
-                append("<p><b>${escapeHtml(company.companyName)}</b> · ${escapeHtml(company.phone)}</p><hr/>")
-                append("<p><b>Destinataire :</b> ${escapeHtml(order.clientName)} (${escapeHtml(order.clientPhone)})<br/><b>Zone / Adresse :</b> ${escapeHtml(order.deliveryZone.ifBlank { order.clientAddress })}<br/><b>Livreur :</b> ${escapeHtml(order.deliveryDriver.ifBlank { "À affecter" })}</p>")
-                append("<ul>")
-                parsedItems.forEach { item -> append("<li><b>${item.quantity}x ${escapeHtml(item.garmentName)}</b> (${escapeHtml(item.barcode)})</li>") }
-                append("</ul>")
-                if (showFinancials) {
-                    append("<p><b>Reste à encaisser à la livraison : ${formatMoney(order.remainingAmount, currency)}</b></p>")
-                }
-                append("<p style='margin-top:32px;'>Signature client à la réception : ________________________</p></body></html>")
-            }
-            "LABELS" -> buildString {
-                append("<html><body style='font-family:monospace;padding:12px;'>")
-                append("<h3>ÉTIQUETTES VÊTEMENTS · ${escapeHtml(order.orderNumber)}</h3>")
-                parsedItems.forEach { item ->
-                    append("<div style='border:1px dashed #111;padding:10px;margin-bottom:10px;'>")
-                    append("<div><b>${escapeHtml(company.companyName)}</b></div>")
-                    append("<div>CMD: ${escapeHtml(order.orderNumber)} | TAG: <b>${escapeHtml(item.barcode.ifBlank { order.orderNumber })}</b></div>")
-                    append("<div>CLIENT: ${escapeHtml(order.clientName)}</div>")
-                    append("<div>ARTICLE: ${item.quantity}x ${escapeHtml(item.garmentName)} (${escapeHtml(item.serviceName)})</div>")
-                    if (item.defects.isNotBlank()) append("<div>DEF: ${escapeHtml(item.defects)}</div>")
-                    append("</div>")
-                }
-                append("</body></html>")
-            }
-            else -> buildString {
-                val widthPx = if (company.receiptFormat == "THERMAL_58") "220px" else "300px"
-                append("<html><body style='font-family:monospace;width:$widthPx;margin:0 auto;padding:10px;font-size:12px;'>")
-                append("<div style='text-align:center;'><b>${escapeHtml(company.companyName.uppercase())}</b><br/>${escapeHtml(company.address.ifBlank { company.commune })}<br/>Tél: ${escapeHtml(company.phone)}</div><hr/>")
-                append("<div><b>TICKET: ${escapeHtml(order.orderNumber)}</b><br/>Client: ${escapeHtml(order.clientName)}<br/>Retrait: ${formatDateMillis(order.dueDateMillis)}</div><hr/>")
-                parsedItems.forEach { item ->
-                    append("<div>${item.quantity}x ${escapeHtml(item.garmentName)} ... <b>${formatMoney(item.lineTotal, currency)}</b></div>")
-                }
-                append("<hr/><div><b>TOTAL: ${formatMoney(order.totalAmount, currency)}</b><br/>PAYÉ: ${formatMoney(order.paidAmount, currency)}<br/><b>RESTE: ${formatMoney(order.remainingAmount, currency)}</b></div><hr/>")
-                append("<div style='text-align:center;font-size:10px;'>${escapeHtml(company.receiptFooter)}</div></body></html>")
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = { showReceiptDialog = false },
-            title = { Text("Documents & Impression (${company.receiptFormat})", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        availableDocModes.forEach { (code, label) ->
-                            FilterChip(selected = docMode == code, onClick = { docMode = code }, label = { Text(label, style = MaterialTheme.typography.labelSmall) })
-                        }
-                    }
-                    HorizontalDivider()
-                    Text(company.companyName.uppercase(), fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-                    Text("${company.address.ifBlank { company.commune }} · ${company.phone}", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-                    Text(
-                        text = order.orderNumber,
-                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFamily),
-                        fontWeight = FontWeight.Bold
-                    )
-                    if (docMode == "TICKET" || docMode == "INVOICE") {
-                        QrCodeCanvas(content = "${company.companyName}|${order.orderNumber}|${order.totalAmount}", size = 116.dp)
-                        Text("Scannez pour vérifier la commande", style = MaterialTheme.typography.labelSmall)
-                    }
-                    HorizontalDivider()
-                    parsedItems.forEach { item ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(
-                                if (docMode == "LABELS") "[${item.barcode}] ${item.quantity}x ${item.garmentName}" else "${item.quantity}x ${item.garmentName}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            if (showFinancials) {
-                                Text(formatMoney(item.lineTotal, currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    if (showFinancials) {
-                        HorizontalDivider()
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("TOTAL", fontWeight = FontWeight.ExtraBold)
-                            Text(formatMoney(order.totalAmount, currency), fontWeight = FontWeight.ExtraBold, color = RoyalBlue)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("PAYÉ", style = MaterialTheme.typography.bodySmall)
-                            Text(formatMoney(order.paidAmount, currency), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("RESTE", style = MaterialTheme.typography.bodySmall)
-                            Text(formatMoney(order.remainingAmount, currency), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Text(company.receiptFooter, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
-                }
+        ThermalPrintPreviewDialog(
+            company = company,
+            order = order,
+            activeSession = activeSession,
+            initialMode = if (company.autoPrintLabelsOnPayment && order.remainingAmount == 0L && !activeSession.canPrintFinancialReceipt) {
+                "LABELS"
+            } else {
+                null
             },
-            confirmButton = {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick = { shareTextIntent(context, "Document ${order.orderNumber}", buildReceiptText()) },
-                        modifier = Modifier.heightIn(min = 48.dp)
-                    ) {
-                        Text("Partager")
-                    }
-                    Button(
-                        onClick = { printHtmlDocument(context, "${docMode}_${order.orderNumber}", buildDocumentHtml()) },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
-                    ) {
-                        Text("Imprimer / PDF")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showReceiptDialog = false },
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) { Text("Fermer") }
-            }
+            onDismiss = { showReceiptDialog = false }
         )
     }
 
