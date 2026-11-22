@@ -969,4 +969,254 @@ class ExampleUnitTest {
         assertTrue("pressing_all" in cashierTopics)
         assertTrue(cashierTopics.any { it.startsWith("agency_agence_cocody") })
     }
+
+    @Test
+    fun sixRoleSecuritySimulation_enforcesLoginBindingRoutesAndAntiPrivilegeEscalation() {
+        val company = com.example.data.CompanyConfig(
+            companyName = "Pressing Pro Abidjan",
+            email = "dg@pressingpro.ci",
+            agencies = listOf("Agence Cocody", "Agence Yopougon")
+        )
+        val employees = listOf(
+            com.example.data.EmployeeRecord(
+                id = "e_dir",
+                fullName = "Kouassi DG",
+                phone = "+2250700000001",
+                role = "DIRECTEUR",
+                agencyName = "Agence Cocody",
+                monthlySalary = 650000L,
+                active = true
+            ),
+            com.example.data.EmployeeRecord(
+                id = "e_mgr",
+                fullName = "Bamba Gérant",
+                phone = "+2250700000002",
+                role = "GERANT_AGENCE",
+                agencyName = "Agence Cocody",
+                monthlySalary = 350000L,
+                active = true
+            ),
+            com.example.data.EmployeeRecord(
+                id = "e_cash",
+                fullName = "Awa Caissière",
+                phone = "+2250700000003",
+                role = "CAISSIER",
+                agencyName = "Agence Cocody",
+                monthlySalary = 160000L,
+                active = true
+            ),
+            com.example.data.EmployeeRecord(
+                id = "e_op",
+                fullName = "Moussa Atelier",
+                phone = "+2250700000004",
+                role = "OPERATEUR",
+                agencyName = "Agence Cocody",
+                monthlySalary = 130000L,
+                active = true
+            ),
+            com.example.data.EmployeeRecord(
+                id = "e_qc",
+                fullName = "Mariam Qualité",
+                phone = "+2250700000005",
+                role = "CONTROLE_QUALITE",
+                agencyName = "Agence Yopougon",
+                monthlySalary = 150000L,
+                active = true
+            ),
+            com.example.data.EmployeeRecord(
+                id = "e_drv",
+                fullName = "Ibrahim Livreur",
+                phone = "+2250700000006",
+                role = "LIVREUR",
+                agencyName = "Agence Cocody",
+                monthlySalary = 120000L,
+                active = true
+            )
+        )
+
+        val dirSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "dg@pressingpro.ci",
+            userPhone = "+2250700000001",
+            userDisplayName = "Kouassi DG",
+            company = company,
+            employees = employees
+        )
+        val mgrSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "tel.2250700000002@pressingpro.africa",
+            userPhone = "+2250700000002",
+            userDisplayName = "Bamba Gérant",
+            company = company,
+            employees = employees
+        )
+        val cashSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "tel.2250700000003@pressingpro.africa",
+            userPhone = "+2250700000003",
+            userDisplayName = "Awa Caissière",
+            company = company,
+            employees = employees
+        )
+        val opSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "tel.2250700000004@pressingpro.africa",
+            userPhone = "+2250700000004",
+            userDisplayName = "Moussa Atelier",
+            company = company,
+            employees = employees
+        )
+        val qcSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "tel.2250700000005@pressingpro.africa",
+            userPhone = "+2250700000005",
+            userDisplayName = "Mariam Qualité",
+            company = company,
+            employees = employees
+        )
+        val drvSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "tel.2250700000006@pressingpro.africa",
+            userPhone = "+2250700000006",
+            userDisplayName = "Ibrahim Livreur",
+            company = company,
+            employees = employees
+        )
+
+        // Exact role + agency binding for all 6 profiles
+        assertEquals(com.example.data.WorkspaceRole.DIRECTEUR, dirSession.role)
+        assertNull(dirSession.isolatedAgency)
+        assertEquals(com.example.data.WorkspaceRole.GERANT_AGENCE, mgrSession.role)
+        assertEquals("Agence Cocody", mgrSession.isolatedAgency)
+        assertEquals(com.example.data.WorkspaceRole.CAISSIER, cashSession.role)
+        assertEquals("Agence Cocody", cashSession.isolatedAgency)
+        assertEquals(com.example.data.WorkspaceRole.OPERATEUR, opSession.role)
+        assertEquals("Agence Cocody", opSession.isolatedAgency)
+        assertEquals(com.example.data.WorkspaceRole.CONTROLE_QUALITE, qcSession.role)
+        assertEquals("Agence Yopougon", qcSession.isolatedAgency)
+        assertEquals(com.example.data.WorkspaceRole.LIVREUR, drvSession.role)
+        assertEquals("Agence Cocody", drvSession.isolatedAgency)
+
+        // Route guards: non-directors never access roles_rbac; non-financial roles never access finance/pos/billing
+        assertTrue(dirSession.canAccessRoute("roles_rbac"))
+        assertFalse(mgrSession.canAccessRoute("roles_rbac"))
+        assertFalse(cashSession.canAccessRoute("finance"))
+        assertFalse(opSession.canAccessRoute("finance"))
+        assertFalse(opSession.canAccessRoute("pos"))
+        assertFalse(qcSession.canAccessRoute("finance"))
+        assertFalse(qcSession.canAccessRoute("pos"))
+        assertFalse(drvSession.canAccessRoute("finance"))
+        assertFalse(drvSession.canAccessRoute("workshop_tracker"))
+        assertFalse(drvSession.canAccessRoute("settings"))
+
+        // Anti-privilege escalation: Gérant d'Agence CANNOT create/edit DIRECTEUR or GERANT_AGENCE or cross-agency staff
+        assertFalse(mgrSession.canAssignRole(com.example.data.WorkspaceRole.DIRECTEUR))
+        assertFalse(mgrSession.canAssignRole(com.example.data.WorkspaceRole.GERANT_AGENCE))
+        assertTrue(mgrSession.canAssignRole(com.example.data.WorkspaceRole.CAISSIER))
+        assertTrue(mgrSession.canAssignRole(com.example.data.WorkspaceRole.OPERATEUR))
+        assertFalse(
+            mgrSession.canModifyEmployee(
+                existingEmployee = employees[0], // DIRECTEUR
+                targetRole = com.example.data.WorkspaceRole.CAISSIER,
+                targetAgencyName = "Agence Cocody",
+                actorPhone = "+2250700000002"
+            )
+        )
+        assertFalse(
+            mgrSession.canModifyEmployee(
+                existingEmployee = employees[1], // Self-modification blocked
+                targetRole = com.example.data.WorkspaceRole.DIRECTEUR,
+                targetAgencyName = "Agence Cocody",
+                actorPhone = "+2250700000002"
+            )
+        )
+        assertFalse(
+            mgrSession.canModifyEmployee(
+                existingEmployee = employees[4], // Agence Yopougon (cross-agency)
+                targetRole = com.example.data.WorkspaceRole.CONTROLE_QUALITE,
+                targetAgencyName = "Agence Yopougon",
+                actorPhone = "+2250700000002"
+            )
+        )
+        assertTrue(
+            mgrSession.canModifyEmployee(
+                existingEmployee = employees[2], // Caissière Cocody
+                targetRole = com.example.data.WorkspaceRole.CAISSIER,
+                targetAgencyName = "Agence Cocody",
+                actorPhone = "+2250700000002"
+            )
+        )
+        // Director can manage all roles across all agencies
+        assertTrue(dirSession.canAssignRole(com.example.data.WorkspaceRole.DIRECTEUR))
+        assertTrue(dirSession.canAssignRole(com.example.data.WorkspaceRole.GERANT_AGENCE))
+        assertTrue(
+            dirSession.canModifyEmployee(
+                existingEmployee = employees[1],
+                targetRole = com.example.data.WorkspaceRole.GERANT_AGENCE,
+                targetAgencyName = "Agence Yopougon",
+                actorPhone = "+2250700000001"
+            )
+        )
+    }
+
+    @Test
+    fun clientPortalTrackingToken_preventsEnumerationAndSanitizesPrivateFields() {
+        val token1 = com.example.data.TrackingTokenGenerator.generate()
+        val token2 = com.example.data.TrackingTokenGenerator.generate()
+        assertTrue(com.example.data.TrackingTokenGenerator.isValidFormat(token1))
+        assertTrue(com.example.data.TrackingTokenGenerator.isValidFormat(token2))
+        assertFalse(token1 == token2)
+
+        val order = PressingOrder(
+            id = "firestore_secret_doc_id",
+            orderNumber = "PRESS-2026-00042",
+            trackingToken = token1,
+            agencyName = "Agence Cocody",
+            clientName = "Kouassi Yao Bernard",
+            clientPhone = "+225 07 99 88 77 66",
+            clientAddress = "Rue des Jardins Villa 14",
+            observations = "Note interne confidentielle: VIP difficile",
+            status = OrderStatus.READY.name,
+            paymentStatus = com.example.data.PaymentStatus.PARTIAL.name,
+            totalAmount = 15000L,
+            paidAmount = 10000L,
+            remainingAmount = 5000L,
+            itemCount = 4L
+        )
+
+        // Guessable order number, phone number, or client name MUST NOT resolve an order
+        assertNull(com.example.data.ClientPortalOrderView.findByExactToken(listOf(order), "PRESS-2026-00042"))
+        assertNull(com.example.data.ClientPortalOrderView.findByExactToken(listOf(order), "+225 07 99 88 77 66"))
+        assertNull(com.example.data.ClientPortalOrderView.findByExactToken(listOf(order), "Kouassi"))
+        assertNull(com.example.data.ClientPortalOrderView.findByExactToken(listOf(order), ""))
+
+        // Exact trackingToken resolves ONLY a sanitized view with masked client name
+        val view = com.example.data.ClientPortalOrderView.findByExactToken(listOf(order), token1.lowercase())
+        assertNotNull(view)
+        assertEquals("PRESS-2026-00042", view!!.orderNumber)
+        assertEquals("Agence Cocody", view.agencyName)
+        assertEquals(5000L, view.remainingAmount)
+        assertEquals(4L, view.itemCount)
+        assertFalse(view.maskedClientLabel.contains("Bernard"))
+        assertFalse(view.maskedClientLabel.contains("07 99"))
+        assertTrue(view.maskedClientLabel.startsWith("Kouassi"))
+    }
+
+    @Test
+    fun qrCodeValidator_acceptsValidCodesAndRejectsMalformedOrInjectionPayloads() {
+        val validGarment = com.example.data.QrCodeValidator.validate("PR26-0042-1")
+        assertTrue(validGarment.isSuccess)
+        assertEquals("PR26-0042-1", validGarment.getOrNull())
+
+        val validReceiptQr = com.example.data.QrCodeValidator.validate("PRESSINGPRO|PRESS-2026-00042|TRK-AB12-CD34-EF56")
+        assertTrue(validReceiptQr.isSuccess)
+        assertEquals(
+            "TRK-AB12-CD34-EF56",
+            com.example.data.QrCodeValidator.extractTrackingToken(validReceiptQr.getOrThrow())
+        )
+
+        // Reject malicious / malformed inputs
+        assertTrue(com.example.data.QrCodeValidator.validate("").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("ab").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("<script>alert(1)</script>").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("javascript:alert(1)").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("https://evil.example/phish").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("PRESS-001; DROP TABLE orders").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("CODE\nINJECTION").isFailure)
+        assertTrue(com.example.data.QrCodeValidator.validate("A".repeat(120)).isFailure)
+    }
 }

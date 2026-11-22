@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +35,8 @@ import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ReportProblem
 import androidx.compose.material.icons.rounded.Search
@@ -83,16 +86,20 @@ import com.example.data.AccountingEntry
 import com.example.data.ActiveRoleSession
 import com.example.data.AuthUserProfile
 import com.example.data.ClaimRecord
+import com.example.data.ClientPortalOrderView
 import com.example.data.ClientRecord
 import com.example.data.CompanyConfig
 import com.example.data.OrderStatus
 import com.example.data.PressingOrder
+import com.example.data.QrCodeValidator
 import com.example.data.ServiceItem
 import com.example.data.SubscriptionPlan
+import com.example.data.TrackingTokenGenerator
 import com.example.ui.components.GestionProBrandHeader
 import com.example.ui.components.HorizontalOrderTimeline
 import com.example.ui.components.OrderStatusChip
 import com.example.ui.components.PaymentStatusChip
+import com.example.ui.components.QrBarcodeScannerDialog
 import com.example.ui.components.RoleBadgeChip
 import com.example.ui.theme.AfricaGold
 import com.example.ui.theme.AmberContainer
@@ -222,7 +229,7 @@ fun AiAssistantScreen(
                     onClick = { if (prompt.isNotBlank()) onAskQuestion(prompt.trim()) },
                     enabled = prompt.isNotBlank() && aiState !is AiStreamState.Loading,
                     modifier = Modifier
-                        .height(54.dp)
+                        .heightIn(min = 52.dp)
                         .testTag("ai_send_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
                 ) {
@@ -282,7 +289,7 @@ fun AiAssistantScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ClientPortalScreen(
     company: CompanyConfig,
@@ -295,14 +302,14 @@ fun ClientPortalScreen(
     val context = LocalContext.current
     var trackingQuery by remember { mutableStateOf("") }
     var showSupportTicketDialog by remember { mutableStateOf(false) }
+    var showTokenScanner by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
 
-    val matchedOrder = remember(trackingQuery, orders) {
-        if (trackingQuery.isBlank()) orders.firstOrNull()
-        else orders.firstOrNull {
-            it.orderNumber.contains(trackingQuery, ignoreCase = true) ||
-                it.clientPhone.contains(trackingQuery, ignoreCase = true) ||
-                it.clientName.contains(trackingQuery, ignoreCase = true)
-        }
+    // Strict, non-enumerable token verification: returns ONLY sanitized ClientPortalOrderView
+    val normalizedToken = trackingQuery.trim().uppercase()
+    val hasValidTokenSyntax = TrackingTokenGenerator.isValidFormat(normalizedToken)
+    val sanitizedOrderView = remember(normalizedToken, orders) {
+        ClientPortalOrderView.findByExactToken(orders, normalizedToken)
     }
 
     Scaffold(
@@ -325,7 +332,6 @@ fun ClientPortalScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Mockup-faithful Public Hero Banner: "Vos vêtements entre de bonnes mains !"
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -341,58 +347,137 @@ fun ClientPortalScreen(
                             text = "Vos vêtements entre de bonnes mains !",
                             style = MaterialTheme.typography.headlineSmall,
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            softWrap = true
                         )
                         Text(
-                            text = "Un service rapide, propre et professionnel à ${company.commune.ifBlank { company.city }}. Suivez vos commandes en temps réel.",
+                            text = "Suivi sécurisé par code privé (TRK-XXXX-XXXX-XXXX) imprimé sur votre reçu à ${company.commune.ifBlank { company.city }}.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFD5E1FF)
+                            color = Color(0xFFD5E1FF),
+                            softWrap = true
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { showSupportTicketDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = AfricaGold, contentColor = MidnightNavy),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Demander une collecte / Support →", fontWeight = FontWeight.Bold)
-                            }
+                        Button(
+                            onClick = { showSupportTicketDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = AfricaGold, contentColor = MidnightNavy),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
+                        ) {
+                            Text("Demander une collecte / Support →", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
             item {
-                OutlinedTextField(
-                    value = trackingQuery,
-                    onValueChange = { trackingQuery = it },
-                    label = { Text("Suivre ma commande (N° ticket ou téléphone)") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = trackingQuery,
+                            onValueChange = {
+                                trackingQuery = it.uppercase().take(24)
+                                scanError = null
+                            },
+                            label = { Text("Code de suivi privé (TRK-XXXX-XXXX-XXXX)") },
+                            leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("client_portal_tracking_token_input")
+                        )
+                        Button(
+                            onClick = { showTokenScanner = true },
+                            modifier = Modifier
+                                .heightIn(min = 52.dp)
+                                .testTag("client_portal_scan_qr_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                        ) {
+                            Icon(Icons.Rounded.QrCodeScanner, contentDescription = "Scanner le QR reçu")
+                        }
+                    }
+                    scanError?.let { err ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = CrimsonContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = err,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CrimsonDanger,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            if (matchedOrder != null) {
+            if (sanitizedOrderView != null) {
                 item {
-                    val stepIdx = matchedOrder.orderStatusEnum().stepIndex
+                    val stepIdx = sanitizedOrderView.status.stepIndex
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("client_portal_verified_order_card"),
                         border = BorderStroke(1.dp, RoyalBlue),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(matchedOrder.orderNumber, fontWeight = FontWeight.ExtraBold, color = RoyalBlue)
-                                OrderStatusChip(matchedOrder.orderStatusEnum(), matchedOrder.isLate())
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(sanitizedOrderView.orderNumber, fontWeight = FontWeight.ExtraBold, color = RoyalBlue)
+                                OrderStatusChip(sanitizedOrderView.status, sanitizedOrderView.isLate)
                             }
-                            Text("Client : ${matchedOrder.clientName}", fontWeight = FontWeight.SemiBold)
-                            Text("Disponibilité estimée : ${formatDateMillis(matchedOrder.dueDateMillis)}", style = MaterialTheme.typography.bodySmall)
+                            Text("Titulaire : ${sanitizedOrderView.maskedClientLabel}", fontWeight = FontWeight.SemiBold)
+                            Text("Agence : ${sanitizedOrderView.agencyName} · ${sanitizedOrderView.itemCount} pièce(s)", style = MaterialTheme.typography.bodySmall)
+                            Text("Disponibilité estimée : ${formatDateMillis(sanitizedOrderView.dueDateMillis)}", style = MaterialTheme.typography.bodySmall)
                             HorizontalOrderTimeline(currentStepIndex = stepIdx)
                             HorizontalDivider()
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                PaymentStatusChip(matchedOrder.paymentStatusEnum())
-                                Text("Reste : ${formatMoney(matchedOrder.remainingAmount, company.currency)}", fontWeight = FontWeight.Bold)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                PaymentStatusChip(sanitizedOrderView.paymentStatus)
+                                Text("Reste à régler : ${formatMoney(sanitizedOrderView.remainingAmount, company.currency)}", fontWeight = FontWeight.Bold)
                             }
+                        }
+                    }
+                }
+            } else {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = PastelBlueTint,
+                        border = BorderStroke(1.dp, PastelBlueBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = RoyalBlue, modifier = Modifier.size(20.dp))
+                            Text(
+                                text = when {
+                                    normalizedToken.isBlank() ->
+                                        "Confidentialité protégée : saisissez le code privé imprimé sur votre reçu client (TRK-XXXX-XXXX-XXXX) ou scannez le QR code pour consulter votre commande."
+                                    !hasValidTokenSyntax ->
+                                        "Format attendu : TRK-XXXX-XXXX-XXXX. Les recherches par nom ou téléphone sont désactivées pour protéger la vie privée des clients."
+                                    else ->
+                                        "Aucune commande trouvée pour ce code de suivi. Vérifiez le code imprimé sur votre ticket de dépôt."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MidnightNavy,
+                                softWrap = true
+                            )
                         }
                     }
                 }
@@ -407,7 +492,9 @@ fun ClientPortalScreen(
                         Text("Contact : ${company.phone}", style = MaterialTheme.typography.bodySmall, color = RoyalBlue)
                         OutlinedButton(
                             onClick = { openMapIntent(context, company.latitude, company.longitude, company.companyName) },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
                         ) {
                             Icon(Icons.Rounded.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
@@ -423,7 +510,7 @@ fun ClientPortalScreen(
                         Text("Tarifs publics (${company.currency})", fontWeight = FontWeight.Bold)
                         services.filter { it.available }.forEach { srv ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("${srv.name} (${srv.treatmentType})", style = MaterialTheme.typography.bodySmall)
+                                Text("${srv.name} (${srv.treatmentType})", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(end = 8.dp), softWrap = true)
                                 Text(formatMoney(srv.unitPrice, company.currency), fontWeight = FontWeight.Bold, color = RoyalBlue)
                             }
                         }
@@ -433,9 +520,27 @@ fun ClientPortalScreen(
         }
     }
 
+    if (showTokenScanner) {
+        QrBarcodeScannerDialog(
+            title = "Scanner votre ticket client",
+            subtitle = "Pointez la caméra vers le QR code de votre reçu de dépôt.",
+            onCodeScanned = { rawCode ->
+                showTokenScanner = false
+                val extracted = QrCodeValidator.extractTrackingToken(rawCode)
+                if (extracted != null) {
+                    trackingQuery = extracted
+                    scanError = null
+                } else {
+                    scanError = "Ce QR code ne contient pas de code de suivi client valide (format TRK-XXXX-XXXX-XXXX)."
+                }
+            },
+            onDismiss = { showTokenScanner = false }
+        )
+    }
+
     if (showSupportTicketDialog) {
-        var clientName by remember { mutableStateOf(matchedOrder?.clientName ?: "") }
-        var orderNum by remember { mutableStateOf(matchedOrder?.orderNumber ?: "") }
+        var clientName by remember { mutableStateOf("") }
+        var orderNum by remember { mutableStateOf(sanitizedOrderView?.orderNumber ?: "") }
         var subject by remember { mutableStateOf("Demande de collecte / Assistance") }
         var message by remember { mutableStateOf("") }
         AlertDialog(
@@ -465,11 +570,15 @@ fun ClientPortalScreen(
                             showSupportTicketDialog = false
                         }
                     },
-                    enabled = clientName.isNotBlank() && subject.isNotBlank() && message.isNotBlank()
+                    enabled = clientName.isNotBlank() && subject.isNotBlank() && message.isNotBlank(),
+                    modifier = Modifier.heightIn(min = 48.dp)
                 ) { Text("Envoyer le message") }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showSupportTicketDialog = false }) { Text("Annuler") }
+                OutlinedButton(
+                    onClick = { showSupportTicketDialog = false },
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Annuler") }
             }
         )
     }
@@ -581,7 +690,7 @@ fun SaasAdminScreen(
                             enabled = newAgencyName.isNotBlank(),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
-                                .height(52.dp)
+                                .heightIn(min = 48.dp)
                                 .testTag("saas_add_agency_button"),
                             colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
                         ) {
@@ -853,7 +962,7 @@ fun SettingsScreen(
                         enabled = !authUiState.isProfileUpdating,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("settings_refresh_session_button")
                     ) {
                         if (authUiState.isProfileUpdating) {
@@ -900,20 +1009,20 @@ fun SettingsScreen(
                 onClick = onReopenSetupWizard,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
                     .testTag("settings_reopen_setup_button"),
                 colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
             ) {
                 Icon(Icons.Rounded.Tune, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Modifier la configuration complète (10 étapes)")
+                Text("Modifier la configuration complète (10 étapes)", softWrap = true)
             }
 
             OutlinedButton(
                 onClick = onSignOut,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
                     .testTag("settings_sign_out_button"),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonDanger),
                 border = BorderStroke(1.dp, CrimsonDanger)

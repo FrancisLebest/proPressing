@@ -36,6 +36,7 @@ import com.example.data.RoleSessionResolver
 import com.example.data.ServiceItem
 import com.example.data.StockItem
 import com.example.data.TenantDataScoper
+import com.example.data.TrackingTokenGenerator
 import com.example.data.WorkspaceRole
 import com.example.data.local.OfflineOrderEntity
 import com.example.data.local.OfflineSyncRepository
@@ -548,6 +549,7 @@ class PressingViewModel(
     }
 
     fun saveCompanyConfig(config: CompanyConfig, silent: Boolean = false, onDone: () -> Unit = {}) {
+        if (_isBusy.value) return
         val session = _activeRoleSession.value
         val allowed = session.canEditAgencySettingsAndTariffs || session.canManageLocalPrinter || !config.setupCompleted
         if (!allowed) {
@@ -570,10 +572,15 @@ class PressingViewModel(
         justification: String,
         onDone: () -> Unit = {}
     ) {
+        if (_isBusy.value) return
         val session = _activeRoleSession.value
         if (!session.canRunCashClose) {
             recordAudit("Refus clôture Z de caisse", allowed = false)
             _feedbackMessage.value = "Action bloquée : clôture de caisse réservée au Caissier, Gérant ou Directeur."
+            return
+        }
+        if (company.lastCashCloseDate == summary.dateKey) {
+            _feedbackMessage.value = "La journée du ${summary.dateKey} est déjà clôturée et verrouillée."
             return
         }
         if (summary.requiresJustification && justification.trim().length < 5) {
@@ -694,7 +701,9 @@ class PressingViewModel(
         dueDateMillis: Long,
         onCreated: (String) -> Unit
     ) {
+        if (_isBusy.value) return
         if (!requirePermission(AccessPermission.CREATE_ORDER, "Créer une commande")) return
+        val orderTrackingToken = TrackingTokenGenerator.generate()
         viewModelScope.launch {
             _isBusy.value = true
             val offlineNow = connectivityObserver != null && !connectivityObserver.isCurrentlyOnline()
@@ -720,7 +729,8 @@ class PressingViewModel(
                     assignedEmployee = assignedEmployee,
                     clientSignatureName = clientSignatureName,
                     observations = observations,
-                    dueDateMillis = dueDateMillis
+                    dueDateMillis = dueDateMillis,
+                    trackingToken = orderTrackingToken
                 )
                 _isBusy.value = false
                 recordAudit("Commande $orderNumber mise en cache local Room (hors-ligne)", allowed = true, persistToFirestore = false)
@@ -750,7 +760,8 @@ class PressingViewModel(
                 assignedEmployee = assignedEmployee,
                 clientSignatureName = clientSignatureName,
                 observations = observations,
-                dueDateMillis = dueDateMillis
+                dueDateMillis = dueDateMillis,
+                trackingToken = orderTrackingToken
             )
             _isBusy.value = false
             res.fold(
@@ -813,7 +824,8 @@ class PressingViewModel(
                             assignedEmployee = assignedEmployee,
                             clientSignatureName = clientSignatureName,
                             observations = observations,
-                            dueDateMillis = dueDateMillis
+                            dueDateMillis = dueDateMillis,
+                            trackingToken = orderTrackingToken
                         )
                         _feedbackMessage.value = "Réseau instable : $orderNumber sauvegardée en cache Room pour sync auto."
                         onCreated(localEntity.localId)
@@ -951,6 +963,7 @@ class PressingViewModel(
     }
 
     fun recordOrderPayment(order: PressingOrder, amount: Long, method: PaymentMethod) {
+        if (_isBusy.value) return
         if (!requirePermission(AccessPermission.COLLECT_PAYMENT, "Encaisser ${order.orderNumber}")) return
         viewModelScope.launch {
             _isBusy.value = true
@@ -1055,20 +1068,60 @@ class PressingViewModel(
     }
 
     fun saveEmployee(emp: EmployeeRecord, onDone: () -> Unit = {}) {
+        if (_isBusy.value) return
         if (!requirePermission(AccessPermission.MANAGE_USERS_AND_ROLES, "Gérer le personnel")) return
+        val session = _activeRoleSession.value
+        val existingList = (employeesState.value as? UiState.Success)?.data.orEmpty()
+        val existingEmp = if (emp.id.isNotBlank()) existingList.firstOrNull { it.id == emp.id } else null
+        val targetRole = WorkspaceRole.fromRaw(emp.role)
+        if (!session.canModifyEmployee(existingEmp, targetRole, emp.agencyName, currentUserPhone)) {
+            recordAudit(
+                action = "Tentative d'élévation de privilège bloquée sur ${emp.fullName.ifBlank { "employé" }} (${targetRole.shortTitleFr})",
+                allowed = false,
+                route = "staff",
+                persistToFirestore = true
+            )
+            _feedbackMessage.value = "Action bloquée : vous ne pouvez pas attribuer un rôle supérieur ou égal au vôtre."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
             val res = repository.saveEmployee(currentUserId, emp)
             _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit("Mise à jour employé ${emp.fullName} (${targetRole.shortTitleFr})", allowed = true)
+            }
             showResult(res, "Fiche employé enregistrée.")
             if (res.isSuccess) onDone()
         }
     }
 
     fun deleteEmployee(empId: String) {
+        if (_isBusy.value) return
         if (!requirePermission(AccessPermission.MANAGE_USERS_AND_ROLES, "Supprimer un employé")) return
+        val session = _activeRoleSession.value
+        val existingList = (employeesState.value as? UiState.Success)?.data.orEmpty()
+        val existingEmp = existingList.firstOrNull { it.id == empId }
+        if (existingEmp != null && !session.canModifyEmployee(
+                existingEmployee = existingEmp,
+                targetRole = WorkspaceRole.fromRaw(existingEmp.role),
+                targetAgencyName = existingEmp.agencyName,
+                actorPhone = currentUserPhone
+            )
+        ) {
+            recordAudit(
+                action = "Suppression employé refusée (hiérarchie protégée : ${existingEmp.fullName})",
+                allowed = false,
+                route = "staff",
+                persistToFirestore = true
+            )
+            _feedbackMessage.value = "Action bloquée : impossible de supprimer un profil de niveau égal ou supérieur."
+            return
+        }
         viewModelScope.launch {
+            _isBusy.value = true
             val res = repository.deleteEmployee(currentUserId, empId)
+            _isBusy.value = false
             showResult(res, "Employé supprimé.")
         }
     }

@@ -711,7 +711,7 @@ private fun AuthActionCard(
                             imeAction = if (uiState.isRegistrationMode) ImeAction.Next else ImeAction.Done,
                             onDone = {
                                 focusManager.clearFocus()
-                                if (!uiState.isRegistrationMode) {
+                                if (!uiState.isLoading && !uiState.isRegistrationMode) {
                                     onEmailSignIn(emailInput, passwordInput)
                                 }
                             },
@@ -735,7 +735,9 @@ private fun AuthActionCard(
                                 imeAction = ImeAction.Done,
                                 onDone = {
                                     focusManager.clearFocus()
-                                    onEmailRegister(fullName, emailInput, passwordInput, confirmPasswordInput, acceptedTerms)
+                                    if (!uiState.isLoading) {
+                                        onEmailRegister(fullName, emailInput, passwordInput, confirmPasswordInput, acceptedTerms)
+                                    }
                                 },
                                 testTag = "auth_confirm_password_input"
                             )
@@ -978,7 +980,7 @@ private fun AuthActionCard(
                             imeAction = if (uiState.isRegistrationMode) ImeAction.Next else ImeAction.Done,
                             onDone = {
                                 focusManager.clearFocus()
-                                if (!uiState.isRegistrationMode) {
+                                if (!uiState.isLoading && !uiState.isRegistrationMode) {
                                     onPhoneSignIn(selectedCountry.dialCode, phoneInput, passwordInput)
                                 }
                             },
@@ -1002,14 +1004,16 @@ private fun AuthActionCard(
                                 imeAction = ImeAction.Done,
                                 onDone = {
                                     focusManager.clearFocus()
-                                    onPhoneRegister(
-                                        fullName,
-                                        selectedCountry.dialCode,
-                                        phoneInput,
-                                        passwordInput,
-                                        confirmPasswordInput,
-                                        acceptedTerms
-                                    )
+                                    if (!uiState.isLoading) {
+                                        onPhoneRegister(
+                                            fullName,
+                                            selectedCountry.dialCode,
+                                            phoneInput,
+                                            passwordInput,
+                                            confirmPasswordInput,
+                                            acceptedTerms
+                                        )
+                                    }
                                 },
                                 testTag = "auth_phone_confirm_password_input"
                             )

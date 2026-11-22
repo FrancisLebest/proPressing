@@ -82,6 +82,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -177,30 +178,37 @@ fun NewOrderScreen(
         mutableStateOf(activeSession.isolatedAgency ?: company.agencies.firstOrNull() ?: "Agence Principale")
     }
 
-    // Client selection
-    var clientSearch by remember { mutableStateOf("") }
-    var selectedClientId by remember { mutableStateOf("") }
-    var selectedClientCategory by remember { mutableStateOf("STANDARD") }
-    var clientName by remember { mutableStateOf("") }
-    var clientPhone by remember { mutableStateOf("") }
-    var clientAddress by remember { mutableStateOf("") }
-    var showNewClientDialog by remember { mutableStateOf(false) }
+    // Client selection (rememberSaveable survives screen rotation & incoming calls)
+    var clientSearch by rememberSaveable { mutableStateOf("") }
+    var selectedClientId by rememberSaveable { mutableStateOf("") }
+    var selectedClientCategory by rememberSaveable { mutableStateOf("STANDARD") }
+    var clientName by rememberSaveable { mutableStateOf("") }
+    var clientPhone by rememberSaveable { mutableStateOf("") }
+    var clientAddress by rememberSaveable { mutableStateOf("") }
+    var showNewClientDialog by rememberSaveable { mutableStateOf(false) }
 
     // Order options
-    var priority by remember { mutableStateOf(OrderPriority.STANDARD) }
-    var deliveryRequested by remember { mutableStateOf(false) }
-    var deliveryZone by remember { mutableStateOf(company.commune) }
-    var deliveryFeeStr by remember { mutableStateOf("0") }
-    var discountPercentStr by remember { mutableStateOf("0") }
-    var paymentModeChoice by remember { mutableStateOf("PAID") } // PAID, PARTIAL, UNPAID
-    var paymentMethod by remember { mutableStateOf(PaymentMethod.ESPECES) }
-    var partialAmountStr by remember { mutableStateOf("") }
-    var assignedEmployee by remember(employees, activeSession.operatorName) {
+    var priorityName by rememberSaveable { mutableStateOf(OrderPriority.STANDARD.name) }
+    val priority = OrderPriority.fromRaw(priorityName)
+    var deliveryRequested by rememberSaveable { mutableStateOf(false) }
+    var deliveryZone by rememberSaveable { mutableStateOf(company.commune) }
+    var deliveryFeeStr by rememberSaveable { mutableStateOf("0") }
+    var discountPercentStr by rememberSaveable { mutableStateOf("0") }
+    var paymentModeChoice by rememberSaveable { mutableStateOf("PAID") } // PAID, PARTIAL, UNPAID
+    var paymentMethodName by rememberSaveable { mutableStateOf(PaymentMethod.ESPECES.name) }
+    val paymentMethod = PaymentMethod.fromRaw(paymentMethodName)
+    var partialAmountStr by rememberSaveable { mutableStateOf("") }
+    var assignedEmployee by rememberSaveable(employees, activeSession.operatorName) {
         mutableStateOf(employees.firstOrNull()?.fullName ?: activeSession.operatorName)
     }
-    var clientSignatureName by remember { mutableStateOf("") }
-    var observations by remember { mutableStateOf("") }
-    var termsAccepted by remember { mutableStateOf(true) }
+    var clientSignatureName by rememberSaveable { mutableStateOf("") }
+    var observations by rememberSaveable { mutableStateOf("") }
+    var termsAccepted by rememberSaveable { mutableStateOf(true) }
+    var isSubmittingOrder by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isBusy) {
+        if (!isBusy) isSubmittingOrder = false
+    }
 
     // Garments list & exhaustive pressing catalog
     val garments = remember { mutableStateListOf<OrderGarmentItem>() }
@@ -217,9 +225,9 @@ fun NewOrderScreen(
     val catalogCategories = remember(exhaustiveCatalog) {
         listOf("Tous") + exhaustiveCatalog.map { it.category }.distinct()
     }
-    var selectedCatalogCategory by remember { mutableStateOf("Tous") }
-    var catalogSearchQuery by remember { mutableStateOf("") }
-    var showFullCatalog by remember { mutableStateOf(false) }
+    var selectedCatalogCategory by rememberSaveable { mutableStateOf("Tous") }
+    var catalogSearchQuery by rememberSaveable { mutableStateOf("") }
+    var showFullCatalog by rememberSaveable { mutableStateOf(false) }
 
     // Direct per-garment photo capture, AI analysis, zoom preview, and QR scanner state
     var pendingPhotoGarmentIdx by remember { mutableIntStateOf(-1) }
@@ -371,12 +379,14 @@ fun NewOrderScreen(
                         Spacer(Modifier.width(10.dp))
                         Button(
                             onClick = {
+                                if (isBusy || isSubmittingOrder) return@Button
                                 when {
                                     clientName.isBlank() -> formError = "Sélectionnez ou saisissez le nom du client."
                                     garments.isEmpty() -> formError = "Ajoutez au moins un vêtement à la commande."
                                     !termsAccepted -> formError = "Le client doit valider les conditions de dépôt."
                                     else -> {
                                         formError = null
+                                        isSubmittingOrder = true
                                         onSubmitOrder(
                                             orderNumber,
                                             activeSession.isolatedAgency ?: selectedAgency,
@@ -402,16 +412,26 @@ fun NewOrderScreen(
                                     }
                                 }
                             },
-                            enabled = !isBusy,
+                            enabled = !isBusy && !isSubmittingOrder,
                             modifier = Modifier
                                 .heightIn(min = 48.dp)
                                 .testTag("submit_order_button"),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
                         ) {
-                            Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Enregistrer", fontWeight = FontWeight.Bold, maxLines = 1)
+                            if (isBusy || isSubmittingOrder) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Envoi...", fontWeight = FontWeight.Bold, maxLines = 1)
+                            } else {
+                                Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Enregistrer", fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
                 }
@@ -1322,7 +1342,7 @@ fun NewOrderScreen(
                         OrderPriority.entries.forEach { p ->
                             FilterChip(
                                 selected = priority == p,
-                                onClick = { priority = p },
+                                onClick = { priorityName = p.name },
                                 modifier = Modifier.heightIn(min = 48.dp),
                                 label = {
                                     Text(
@@ -1501,7 +1521,7 @@ fun NewOrderScreen(
                         PaymentMethod.entries.forEach { method ->
                             FilterChip(
                                 selected = paymentMethod == method,
-                                onClick = { paymentMethod = method },
+                                onClick = { paymentMethodName = method.name },
                                 label = { Text(method.labelFr) }
                             )
                         }

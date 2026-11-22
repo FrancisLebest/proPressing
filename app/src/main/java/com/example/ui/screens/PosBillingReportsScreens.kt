@@ -266,7 +266,7 @@ fun PosCashRegisterScreen(
                                 onClick = { showCheckoutDialog = true },
                                 enabled = cart.isNotEmpty() && !isBusy,
                                 modifier = Modifier
-                                    .height(50.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("pos_pay_now_button"),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
@@ -416,8 +416,9 @@ fun PosCashRegisterScreen(
     }
 
     if (showCheckoutDialog) {
+        var isSubmittingPos by remember { mutableStateOf(false) }
         AlertDialog(
-            onDismissRequest = { showCheckoutDialog = false },
+            onDismissRequest = { if (!isSubmittingPos) showCheckoutDialog = false },
             title = { Text("Encaissement Caisse · $nextOrderNum", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -465,18 +466,25 @@ fun PosCashRegisterScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        onCreatePosOrder(
-                            nextOrderNum,
-                            selectedClientId,
-                            clientName.ifBlank { "Client Comptoir" },
-                            clientPhone,
-                            cart.toList(),
-                            totalAmount,
-                            paymentMethod
-                        )
-                        cart.clear()
-                        showCheckoutDialog = false
+                        if (!isBusy && !isSubmittingPos && cart.isNotEmpty()) {
+                            isSubmittingPos = true
+                            onCreatePosOrder(
+                                nextOrderNum,
+                                selectedClientId,
+                                clientName.ifBlank { "Client Comptoir" },
+                                clientPhone,
+                                cart.toList(),
+                                totalAmount,
+                                paymentMethod
+                            )
+                            cart.clear()
+                            showCheckoutDialog = false
+                        }
                     },
+                    enabled = !isBusy && !isSubmittingPos && cart.isNotEmpty(),
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("pos_confirm_checkout_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess)
                 ) {
                     Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -485,7 +493,11 @@ fun PosCashRegisterScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCheckoutDialog = false }) { Text("Annuler") }
+                TextButton(
+                    onClick = { showCheckoutDialog = false },
+                    enabled = !isSubmittingPos,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Annuler") }
             }
         )
     }

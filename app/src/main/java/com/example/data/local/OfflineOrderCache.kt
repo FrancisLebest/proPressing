@@ -19,6 +19,7 @@ import com.example.data.PaymentMethod
 import com.example.data.PaymentStatus
 import com.example.data.PressingOrder
 import com.example.data.PressingRepository
+import com.example.data.TrackingTokenGenerator
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
@@ -33,6 +34,7 @@ data class OfflineOrderEntity(
     @PrimaryKey val localId: String = "offline_${UUID.randomUUID().toString().take(12)}",
     val userId: String,
     val orderNumber: String,
+    val trackingToken: String = TrackingTokenGenerator.generate(),
     val agencyName: String,
     val clientId: String,
     val clientName: String,
@@ -83,6 +85,7 @@ data class OfflineOrderEntity(
             id = localId,
             userId = userId,
             orderNumber = orderNumber,
+            trackingToken = trackingToken,
             agencyName = agencyName,
             clientId = clientId,
             clientName = clientName,
@@ -213,7 +216,7 @@ interface OfflineOrderDao {
 
 @Database(
     entities = [OfflineOrderEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class PressingLocalDatabase : RoomDatabase() {
@@ -273,11 +276,15 @@ class OfflineSyncRepository(
         assignedEmployee: String,
         clientSignatureName: String,
         observations: String,
-        dueDateMillis: Long
+        dueDateMillis: Long,
+        trackingToken: String = TrackingTokenGenerator.generate()
     ): OfflineOrderEntity {
+        val safeToken = trackingToken.trim().uppercase().takeIf { TrackingTokenGenerator.isValidFormat(it) }
+            ?: TrackingTokenGenerator.generate()
         val entity = OfflineOrderEntity(
             userId = userId,
             orderNumber = orderNumber.trim().take(40),
+            trackingToken = safeToken,
             agencyName = agencyName.trim().take(100),
             clientId = clientId.trim().take(128),
             clientName = clientName.trim().take(120),
@@ -333,7 +340,8 @@ class OfflineSyncRepository(
                 assignedEmployee = entry.assignedEmployee,
                 clientSignatureName = entry.clientSignatureName,
                 observations = entry.observations,
-                dueDateMillis = entry.dueDateMillis
+                dueDateMillis = entry.dueDateMillis,
+                trackingToken = entry.trackingToken
             )
             if (result.isSuccess) {
                 dao.deleteByLocalId(entry.localId)

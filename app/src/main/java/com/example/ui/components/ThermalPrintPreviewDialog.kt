@@ -136,8 +136,9 @@ fun ThermalPrintPreviewDialog(
     val garmentLabels = remember(order) {
         ThermalReceiptFormatter.buildPhysicalGarmentLabels(order)
     }
-    val orderQrPayload = remember(company, order) {
-        "PRESSINGPRO|${order.orderNumber}|${order.id}|${company.companyName}"
+    val orderQrPayload = remember(order.orderNumber, order.trackingToken) {
+        val tokenSegment = order.trackingToken.ifBlank { order.orderNumber }
+        "PRESSINGPRO|${order.orderNumber}|$tokenSegment"
     }
 
     fun triggerBluetoothPrint() {

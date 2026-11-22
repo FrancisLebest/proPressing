@@ -405,7 +405,10 @@ object ThermalReceiptFormatter {
         lines.add(ThermalLine(dblSep, ThermalLineStyle.DOUBLE_SEPARATOR))
 
         // Footer & Custody Legal Terms
-        wrapText("Scannez le QR pour suivi Portail Client", w).forEach {
+        if (order.trackingToken.isNotBlank()) {
+            lines.add(ThermalLine(formatLeftRight("Code suivi:", order.trackingToken, w), ThermalLineStyle.CENTER_BOLD))
+        }
+        wrapText("Scannez le QR ou saisissez le code suivi", w).forEach {
             lines.add(ThermalLine(it, ThermalLineStyle.CENTER))
         }
         val footer = company.receiptFooter.ifBlank {

@@ -1233,6 +1233,10 @@ private fun DailyCashCloseZSection(
     var countedCashStr by remember { mutableStateOf("") }
     var justification by remember { mutableStateOf("") }
     var printFeedback by remember { mutableStateOf<String?>(null) }
+    var isSubmittingClose by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(isBusy, isDayLocked) {
+        if (!isBusy) isSubmittingClose = false
+    }
 
     val countedCash = countedCashStr.toLongOrNull() ?: 0L
     val summary = remember(transactions, countedCash, agencyName, todayKey) {
@@ -1243,7 +1247,7 @@ private fun DailyCashCloseZSection(
             targetDateKey = todayKey
         )
     }
-    val canSubmitClose = !isDayLocked && !isBusy && countedCashStr.isNotBlank() &&
+    val canSubmitClose = !isDayLocked && !isBusy && !isSubmittingClose && countedCashStr.isNotBlank() &&
         (!summary.requiresJustification || justification.trim().length >= 5)
 
     LazyColumn(
@@ -1404,8 +1408,12 @@ private fun DailyCashCloseZSection(
 
                     Button(
                         onClick = {
-                            onRecordDailyCashClose(summary, justification.trim()) {
-                                printFeedback = "Clôture Z validée, horodatée dans Firestore et journée verrouillée."
+                            if (canSubmitClose) {
+                                isSubmittingClose = true
+                                onRecordDailyCashClose(summary, justification.trim()) {
+                                    isSubmittingClose = false
+                                    printFeedback = "Clôture Z validée, horodatée dans Firestore et journée verrouillée."
+                                }
                             }
                         },
                         enabled = canSubmitClose,

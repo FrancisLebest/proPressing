@@ -586,8 +586,9 @@ fun OrderDetailScreen(
     if (showPaymentDialog) {
         var amountStr by remember { mutableStateOf(order.remainingAmount.toString()) }
         var method by remember { mutableStateOf(order.paymentMethodEnum()) }
+        var isSubmittingPayment by remember { mutableStateOf(false) }
         AlertDialog(
-            onDismissRequest = { showPaymentDialog = false },
+            onDismissRequest = { if (!isSubmittingPayment) showPaymentDialog = false },
             title = { Text("Encaisser un règlement", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -607,18 +608,29 @@ fun OrderDetailScreen(
                 }
             },
             confirmButton = {
+                val parsedAmount = amountStr.toLongOrNull() ?: 0L
                 Button(
                     onClick = {
-                        val amt = amountStr.toLongOrNull() ?: 0L
-                        if (amt > 0L) {
-                            onRecordPayment(order, amt, method)
+                        if (!isBusy && !isSubmittingPayment && parsedAmount > 0L) {
+                            isSubmittingPayment = true
+                            onRecordPayment(order, parsedAmount, method)
                             showPaymentDialog = false
                         }
                     },
+                    enabled = !isBusy && !isSubmittingPayment && parsedAmount > 0L,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("order_detail_confirm_payment_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess)
                 ) { Text("Confirmer l'encaissement") }
             },
-            dismissButton = { TextButton(onClick = { showPaymentDialog = false }) { Text("Annuler") } }
+            dismissButton = {
+                TextButton(
+                    onClick = { showPaymentDialog = false },
+                    enabled = !isSubmittingPayment,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) { Text("Annuler") }
+            }
         )
     }
 

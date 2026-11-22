@@ -25,10 +25,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -66,7 +70,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.QrCodeValidator
 import com.example.ui.theme.AfricaGold
+import com.example.ui.theme.CrimsonContainer
+import com.example.ui.theme.CrimsonDanger
 import com.example.ui.theme.MidnightNavy
 import com.example.ui.theme.RoyalBlue
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -88,9 +95,26 @@ fun QrBarcodeScannerDialog(
         )
     }
     var cameraError by remember { mutableStateOf<String?>(null) }
+    var scanValidationError by remember { mutableStateOf<String?>(null) }
     var torchEnabled by remember { mutableStateOf(false) }
     var boundCamera by remember { mutableStateOf<Camera?>(null) }
     var manualCode by remember { mutableStateOf("") }
+
+    fun handleCandidateCode(rawValue: String): Boolean {
+        val validated = QrCodeValidator.validate(rawValue)
+        return validated.fold(
+            onSuccess = { cleanCode ->
+                scanValidationError = null
+                runCatching { boundCamera?.cameraControl?.enableTorch(false) }
+                onCodeScanned(cleanCode)
+                true
+            },
+            onFailure = { err ->
+                scanValidationError = err.message ?: "Code QR / code-barres non valide."
+                false
+            }
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -118,7 +142,9 @@ fun QrBarcodeScannerDialog(
             tonalElevation = 6.dp
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -176,7 +202,7 @@ fun QrBarcodeScannerDialog(
                             onCameraReady = { cam -> boundCamera = cam },
                             onCameraError = { err -> cameraError = err },
                             onBarcodeDetected = { rawValue ->
-                                onCodeScanned(rawValue)
+                                handleCandidateCode(rawValue)
                             }
                         )
                         // Responsive targeting reticle overlay
@@ -248,6 +274,27 @@ fun QrBarcodeScannerDialog(
                     }
                 }
 
+                // Inline validation error banner for malformed/rejected QR codes
+                scanValidationError?.let { errMsg ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CrimsonContainer,
+                        border = BorderStroke(1.dp, CrimsonDanger.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("qr_validation_error_banner")
+                    ) {
+                        Text(
+                            text = errMsg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CrimsonDanger,
+                            fontWeight = FontWeight.SemiBold,
+                            softWrap = true,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+
                 // Manual Barcode / QR Code Entry Fallback
                 Surface(
                     shape = RoundedCornerShape(14.dp),
@@ -270,23 +317,21 @@ fun QrBarcodeScannerDialog(
                         ) {
                             OutlinedTextField(
                                 value = manualCode,
-                                onValueChange = { manualCode = it },
-                                placeholder = { Text("Ex : PRESS-00001-1 ou EAN13") },
+                                onValueChange = {
+                                    manualCode = it
+                                    if (scanValidationError != null) scanValidationError = null
+                                },
+                                placeholder = { Text("Ex : PRESS-00001-1 ou TRK-XXXX") },
                                 singleLine = true,
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("qr_manual_code_input")
                             )
                             Button(
-                                onClick = {
-                                    val cleaned = manualCode.trim()
-                                    if (cleaned.isNotBlank()) {
-                                        onCodeScanned(cleaned)
-                                    }
-                                },
+                                onClick = { handleCandidateCode(manualCode) },
                                 enabled = manualCode.isNotBlank(),
                                 modifier = Modifier
-                                    .height(52.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("qr_manual_submit_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
                             ) {
@@ -300,7 +345,13 @@ fun QrBarcodeScannerDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    OutlinedButton(onClick = onDismiss) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching { boundCamera?.cameraControl?.enableTorch(false) }
+                            onDismiss()
+                        },
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
                         Text("Fermer")
                     }
                 }
@@ -314,13 +365,14 @@ fun QrBarcodeScannerDialog(
 private fun CameraXBarcodePreview(
     onCameraReady: (Camera) -> Unit,
     onCameraError: (String) -> Unit,
-    onBarcodeDetected: (String) -> Unit
+    onBarcodeDetected: (String) -> Boolean
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     val barcodeScanner = remember { BarcodeScanning.getClient() }
     val hasEmitted = remember { AtomicBoolean(false) }
+    val isDisposed = remember { AtomicBoolean(false) }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -333,10 +385,16 @@ private fun CameraXBarcodePreview(
     }
 
     DisposableEffect(lifecycleOwner) {
+        var boundCameraRef: Camera? = null
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val listener = Runnable {
+            if (isDisposed.get()) return@Runnable
             try {
                 val cameraProvider = cameraProviderFuture.get()
+                if (isDisposed.get()) {
+                    cameraProvider.unbindAll()
+                    return@Runnable
+                }
                 val preview = Preview.Builder().build().also {
                     it.surfaceProvider = previewView.surfaceProvider
                 }
@@ -346,14 +404,20 @@ private fun CameraXBarcodePreview(
 
                 imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                     val mediaImage = imageProxy.image
-                    if (mediaImage != null && !hasEmitted.get()) {
+                    if (mediaImage != null && !hasEmitted.get() && !isDisposed.get()) {
                         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
                         barcodeScanner.process(image)
                             .addOnSuccessListener { barcodes ->
                                 val raw = barcodes.firstNotNullOfOrNull { it.rawValue?.trim()?.takeIf { v -> v.isNotBlank() } }
-                                if (raw != null && hasEmitted.compareAndSet(false, true)) {
+                                if (raw != null && !isDisposed.get() && hasEmitted.compareAndSet(false, true)) {
                                     ContextCompat.getMainExecutor(context).execute {
-                                        onBarcodeDetected(raw)
+                                        if (!isDisposed.get()) {
+                                            val accepted = onBarcodeDetected(raw)
+                                            if (!accepted) {
+                                                // Allow immediate retry after rejecting a malformed QR payload
+                                                hasEmitted.set(false)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -375,21 +439,25 @@ private fun CameraXBarcodePreview(
                     preview,
                     imageAnalysis
                 )
+                boundCameraRef = camera
                 onCameraReady(camera)
             } catch (e: Exception) {
                 Log.e("QrBarcodeScanner", "CameraX bind failed", e)
-                onCameraError("Caméra indisponible sur cet appareil. Utilisez la saisie manuelle ci-dessous.")
+                if (!isDisposed.get()) {
+                    onCameraError("Caméra indisponible sur cet appareil. Utilisez la saisie manuelle ci-dessous.")
+                }
             }
         }
         cameraProviderFuture.addListener(listener, ContextCompat.getMainExecutor(context))
 
         onDispose {
-            try {
-                cameraProviderFuture.get().unbindAll()
-            } catch (_: Exception) {
+            isDisposed.set(true)
+            runCatching { boundCameraRef?.cameraControl?.enableTorch(false) }
+            if (cameraProviderFuture.isDone && !cameraProviderFuture.isCancelled) {
+                runCatching { cameraProviderFuture.get().unbindAll() }
             }
-            barcodeScanner.close()
-            cameraExecutor.shutdown()
+            runCatching { barcodeScanner.close() }
+            runCatching { cameraExecutor.shutdownNow() }
         }
     }
 

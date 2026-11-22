@@ -373,7 +373,7 @@ fun RolesPermissionsScreen(
                                 onClick = { onResetRolePermissions(inspectedRole) },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp)
+                                    .heightIn(min = 48.dp)
                                     .testTag("rbac_reset_role_button"),
                                 shape = RoundedCornerShape(14.dp)
                             ) {

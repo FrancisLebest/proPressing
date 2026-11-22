@@ -134,7 +134,8 @@ enum class SubscriptionPlan(val labelFr: String, val monthlyFcfa: Long, val tagl
 }
 
 enum class EmployeeRole(val labelFr: String) {
-    DIRECTEUR("Directeur"),
+    DIRECTEUR("Directeur Général"),
+    GERANT_AGENCE("Gérant d'Agence"),
     CAISSIER("Caissier(ère)"),
     OPERATEUR("Opérateur Atelier"),
     CONTROLE_QUALITE("Contrôle Qualité"),
@@ -142,7 +143,82 @@ enum class EmployeeRole(val labelFr: String) {
 
     companion object {
         fun fromRaw(raw: String): EmployeeRole =
-            entries.firstOrNull { it.name == raw } ?: OPERATEUR
+            entries.firstOrNull { it.name == raw.trim().uppercase() } ?: OPERATEUR
+    }
+}
+
+/**
+ * Generates high-entropy, non-sequential client tracking tokens (TRK-XXXX-XXXX-XXXX)
+ * using SecureRandom so order tracking cannot be enumerated by guessing sequential ticket numbers.
+ */
+object TrackingTokenGenerator {
+    private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    private val secureRandom = java.security.SecureRandom()
+    private val tokenRegex = Regex("^TRK-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
+
+    fun generate(): String {
+        fun chunk(): String = buildString(4) {
+            repeat(4) {
+                append(ALPHABET[secureRandom.nextInt(ALPHABET.length)])
+            }
+        }
+        return "TRK-${chunk()}-${chunk()}-${chunk()}"
+    }
+
+    fun isValidFormat(token: String): Boolean = tokenRegex.matches(token.trim().uppercase())
+}
+
+/**
+ * Strictly sanitized client-facing order projection for the Client Portal.
+ * Excludes internal observations, staff assignments, client phone/address, and garment defect notes.
+ */
+data class ClientPortalOrderView(
+    val orderNumber: String,
+    val trackingToken: String,
+    val agencyName: String,
+    val maskedClientLabel: String,
+    val status: OrderStatus,
+    val isLate: Boolean,
+    val dueDateMillis: Long,
+    val itemCount: Long,
+    val paymentStatus: PaymentStatus,
+    val remainingAmount: Long,
+    val deliveryRequested: Boolean
+) {
+    companion object {
+        fun maskClientName(rawName: String): String {
+            val parts = rawName.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            if (parts.isEmpty()) return "Client"
+            if (parts.size == 1) return parts[0].take(1).uppercase() + "***"
+            return "${parts.first()} ${parts.last().take(1).uppercase()}."
+        }
+
+        fun fromOrder(order: PressingOrder): ClientPortalOrderView = ClientPortalOrderView(
+            orderNumber = order.orderNumber,
+            trackingToken = order.trackingToken,
+            agencyName = order.agencyName.ifBlank { "Agence Principale" },
+            maskedClientLabel = maskClientName(order.clientName),
+            status = order.orderStatusEnum(),
+            isLate = order.isLate(),
+            dueDateMillis = order.dueDateMillis,
+            itemCount = order.itemCount.coerceAtLeast(order.parsedItems().sumOf { it.quantity.coerceAtLeast(1L) }),
+            paymentStatus = order.paymentStatusEnum(),
+            remainingAmount = order.remainingAmount.coerceAtLeast(0L),
+            deliveryRequested = order.deliveryRequested
+        )
+
+        /**
+         * Resolves a single sanitized order ONLY when the caller supplies an exact, non-empty
+         * cryptographically random trackingToken (matching case-insensitively).
+         */
+        fun findByExactToken(orders: List<PressingOrder>, rawInput: String): ClientPortalOrderView? {
+            val candidate = rawInput.trim().uppercase()
+            if (candidate.isBlank() || !TrackingTokenGenerator.isValidFormat(candidate)) return null
+            val matched = orders.firstOrNull { ord ->
+                ord.trackingToken.isNotBlank() && ord.trackingToken.equals(candidate, ignoreCase = true)
+            } ?: return null
+            return fromOrder(matched)
+        }
     }
 }
 
@@ -458,6 +534,7 @@ data class PressingOrder(
     @DocumentId val id: String = "",
     val userId: String = "",
     val orderNumber: String = "",
+    val trackingToken: String = "",
     val agencyName: String = "Agence Principale",
     val clientId: String = "",
     val clientName: String = "",

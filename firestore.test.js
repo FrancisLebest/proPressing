@@ -60,6 +60,7 @@ const validCompanyPayload = (uid, ts = pastDate()) => ({
 const validOrderPayload = (uid, ts = pastDate()) => ({
   userId: uid,
   orderNumber: "PRESS-2026-0001",
+  trackingToken: "TRK-AB12-CD34-EF56",
   agencyName: "Agence Principale - Cocody",
   clientId: "client_1",
   clientName: "Kouassi Yao",
@@ -698,4 +699,152 @@ test("Cross-agency isolation, Cashier salary protection, FCM tokens, and notific
     directorDb.collection("users").doc(ALICE_UID).collection("notifications").doc("notif_1").get()
   );
 });
+
+test("Anti-privilege escalation, Cash Close Z immutability, and trackingToken immutability", async () => {
+  const directorDb = testEnv.authenticatedContext(ALICE_UID, { role: "DIRECTEUR" }).firestore();
+  const cocodyManagerDb = testEnv
+    .authenticatedContext(ALICE_UID, { role: "GERANT_AGENCE", agency: "Agence Principale - Cocody" })
+    .firestore();
+  const ts = pastDate(5000);
+
+  // Directeur creates a GERANT_AGENCE and a DIRECTEUR employee
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_dir").set({
+      userId: ALICE_UID,
+      fullName: "Koffi Directeur",
+      phone: "+225 07 99 99 99",
+      role: "DIRECTEUR",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 600000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_mgr").set({
+      userId: ALICE_UID,
+      fullName: "Awa Gerante",
+      phone: "+225 07 88 88 88",
+      role: "GERANT_AGENCE",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 320000,
+      commissionRate: 2.5,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Manager CAN create a CAISSIER in their own agency
+  await assertSucceeds(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_cashier").set({
+      userId: ALICE_UID,
+      fullName: "Bamba Caissier",
+      phone: "+225 05 11 22 33",
+      role: "CAISSIER",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 160000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Anti-escalation: Manager CANNOT create a DIRECTEUR or GERANT_AGENCE
+  await assertFails(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_fake_dir").set({
+      userId: ALICE_UID,
+      fullName: "Fake Dir",
+      phone: "+225 01 00 00 01",
+      role: "DIRECTEUR",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 500000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertFails(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_fake_mgr").set({
+      userId: ALICE_UID,
+      fullName: "Peer Mgr",
+      phone: "+225 01 00 00 02",
+      role: "GERANT_AGENCE",
+      agencyName: "Agence Principale - Cocody",
+      monthlySalary: 300000,
+      commissionRate: 0.0,
+      presentToday: true,
+      active: true,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Anti-escalation: Manager CANNOT promote CAISSIER to DIRECTEUR nor modify/delete DIRECTEUR
+  await assertFails(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_cashier").update({
+      role: "DIRECTEUR",
+      updatedAt: pastDate(1000),
+    })
+  );
+  await assertFails(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_dir").update({
+      monthlySalary: 1000,
+      updatedAt: pastDate(1000),
+    })
+  );
+  await assertFails(
+    cocodyManagerDb.collection("users").doc(ALICE_UID).collection("employees").doc("emp_dir").delete()
+  );
+
+  // Cash Close Z immutability: create succeeds, update/delete strictly forbidden even for DIRECTEUR
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("transactions").doc("z_close_1").set({
+      userId: ALICE_UID,
+      reference: "Z-20261121-001",
+      entryType: "CASH_CLOSE",
+      category: "Cloture Z Caisse",
+      syscohadaAccount: "571",
+      label: "Cloture Z 2026-11-21 (Agence Principale - Cocody) · Ecart 0",
+      amount: 125000,
+      paymentMethod: "ESPECES",
+      orderId: "",
+      counterparty: "Directeur",
+      agencyName: "Agence Principale - Cocody",
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+  await assertFails(
+    directorDb.collection("users").doc(ALICE_UID).collection("transactions").doc("z_close_1").update({
+      amount: 999999,
+      updatedAt: pastDate(500),
+    })
+  );
+  await assertFails(
+    directorDb.collection("users").doc(ALICE_UID).collection("transactions").doc("z_close_1").delete()
+  );
+
+  // Order trackingToken is immutable after creation
+  await assertSucceeds(
+    directorDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_trk").set(
+      validOrderPayload(ALICE_UID, ts)
+    )
+  );
+  await assertFails(
+    directorDb.collection("users").doc(ALICE_UID).collection("orders").doc("ord_trk").update({
+      trackingToken: "TRK-HACK-HACK-HACK",
+      updatedAt: pastDate(500),
+    })
+  );
+});
+
 

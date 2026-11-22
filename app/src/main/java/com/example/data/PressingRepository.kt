@@ -353,7 +353,8 @@ class PressingRepository(
         assignedEmployee: String,
         clientSignatureName: String,
         observations: String,
-        dueDateMillis: Long
+        dueDateMillis: Long,
+        trackingToken: String = TrackingTokenGenerator.generate()
     ): Result<String> {
         val col = userDoc(userId).collection("orders")
         val docRef = col.document()
@@ -363,6 +364,8 @@ class PressingRepository(
             require(clientName.isNotBlank()) { "Veuillez sélectionner ou saisir un client." }
             require(items.isNotEmpty()) { "Ajoutez au moins un vêtement à la commande." }
 
+            val safeToken = trackingToken.trim().uppercase().takeIf { TrackingTokenGenerator.isValidFormat(it) }
+                ?: TrackingTokenGenerator.generate()
             val itemMaps = items.take(50).map { it.toMap() }
             val itemCount = items.sumOf { it.quantity.coerceAtLeast(1L) }.coerceAtMost(1000L)
             val subtotal = items.sumOf { it.quantity.coerceAtLeast(1L) * it.unitPrice.coerceAtLeast(0L) }
@@ -380,6 +383,7 @@ class PressingRepository(
             val payload = mapOf(
                 "userId" to userId,
                 "orderNumber" to orderNumber.trim().take(40),
+                "trackingToken" to safeToken,
                 "agencyName" to agencyName.trim().take(100),
                 "clientId" to clientId.trim().take(128),
                 "clientName" to clientName.trim().take(120),

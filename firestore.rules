@@ -41,6 +41,18 @@ service cloud.firestore {
       return hasRoleClaim() && request.auth.token.role == 'CAISSIER';
     }
 
+    // Anti-privilege escalation: only DIRECTEUR can assign/manage DIRECTEUR or GERANT_AGENCE.
+    // GERANT_AGENCE may only assign/manage operational agency staff roles below their own level.
+    function canAssignEmployeeRole(targetRole) {
+      return isDirectorRole() ||
+        (isAgencyAdminRole() && targetRole in ['CAISSIER', 'OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR']);
+    }
+
+    function canManageExistingEmployee(existingRole) {
+      return isDirectorRole() ||
+        (isAgencyAdminRole() && existingRole in ['CAISSIER', 'OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR']);
+    }
+
     function hasAgencyClaim() {
       return isSignedIn() && ('agency' in request.auth.token) &&
         request.auth.token.agency is string &&
@@ -150,6 +162,7 @@ service cloud.firestore {
     function isValidPressingOrder(data, userId) {
       return data.userId == userId &&
         data.orderNumber is string && data.orderNumber.size() >= 1 && data.orderNumber.size() <= 40 &&
+        isOptString(data, 'trackingToken', 32) &&
         isOptString(data, 'agencyName', 100) &&
         isOptString(data, 'clientId', 128) &&
         data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 120 &&
@@ -218,7 +231,7 @@ service cloud.firestore {
       return data.userId == userId &&
         data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
         isOptString(data, 'phone', 30) &&
-        data.role is string && data.role in ['DIRECTEUR', 'CAISSIER', 'OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR'] &&
+        data.role is string && data.role in ['DIRECTEUR', 'GERANT_AGENCE', 'CAISSIER', 'OPERATEUR', 'CONTROLE_QUALITE', 'LIVREUR'] &&
         isOptString(data, 'agencyName', 100) &&
         data.monthlySalary is int && data.monthlySalary >= 0 && data.monthlySalary <= 100000000 &&
         data.commissionRate is number && data.commissionRate >= 0 && data.commissionRate <= 100 &&
@@ -418,7 +431,7 @@ service cloud.firestore {
             'dueDateMillis', 'statusHistory', 'createdAt', 'updatedAt'
           ]) &&
           incoming().keys().hasOnly([
-            'userId', 'orderNumber', 'agencyName', 'clientId', 'clientName', 'clientPhone',
+            'userId', 'orderNumber', 'trackingToken', 'agencyName', 'clientId', 'clientName', 'clientPhone',
             'clientAddress', 'status', 'priority', 'items', 'itemCount', 'subtotal',
             'discountAmount', 'expressFee', 'deliveryFee', 'taxAmount', 'totalAmount',
             'paidAmount', 'remainingAmount', 'paymentStatus', 'paymentMethod',
@@ -511,7 +524,7 @@ service cloud.firestore {
         allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(stockId);
       }
 
-      // Employés, Salaires & Présences (interdit aux rôles Opérateur, Contrôle Qualité, Livreur ET Caissier)
+      // Employés, Salaires & Présences (interdit aux rôles Opérateur, Contrôle Qualité, Livreur ET Caissier + anti-escalade)
       match /employees/{employeeId} {
         allow get: if isOwner(userId) && !isNonFinancialRole() && !isCashierRole() && isValidId(employeeId) && matchesAgencyClaim(existing().agencyName);
         allow list: if isOwner(userId) && !isNonFinancialRole() && !isCashierRole() && matchesAgencyClaim(resource.data.agencyName);
@@ -520,6 +533,7 @@ service cloud.firestore {
           isAgencyAdminRole() &&
           isValidId(employeeId) &&
           matchesAgencyClaim(incoming().agencyName) &&
+          canAssignEmployeeRole(incoming().role) &&
           incoming().keys().hasAll([
             'userId', 'fullName', 'role', 'monthlySalary', 'commissionRate',
             'presentToday', 'active', 'createdAt', 'updatedAt'
@@ -533,6 +547,10 @@ service cloud.firestore {
         allow update: if isOwner(userId) &&
           isAgencyAdminRole() &&
           isValidId(employeeId) &&
+          matchesAgencyClaim(existing().agencyName) &&
+          matchesAgencyClaim(incoming().agencyName) &&
+          canManageExistingEmployee(existing().role) &&
+          canAssignEmployeeRole(incoming().role) &&
           isValidEmployeeRecord(incoming(), userId) &&
           incoming().userId == existing().userId &&
           incoming().createdAt == existing().createdAt &&
@@ -541,7 +559,11 @@ service cloud.firestore {
             'commissionRate', 'presentToday', 'active', 'updatedAt'
           ]);
 
-        allow delete: if isOwner(userId) && isAgencyAdminRole() && isValidId(employeeId);
+        allow delete: if isOwner(userId) &&
+          isAgencyAdminRole() &&
+          isValidId(employeeId) &&
+          matchesAgencyClaim(existing().agencyName) &&
+          canManageExistingEmployee(existing().role);
       }
 
       // Réclamations & Tickets Qualité

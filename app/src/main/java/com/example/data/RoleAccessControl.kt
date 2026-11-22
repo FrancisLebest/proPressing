@@ -178,48 +178,56 @@ enum class WorkspaceRole(
     val labelFr: String,
     val shortTitleFr: String,
     val descriptionFr: String,
-    val defaultScope: DataIsolationScope
+    val defaultScope: DataIsolationScope,
+    val privilegeRank: Int
 ) {
     DIRECTEUR(
         labelFr = "Directeur Général",
         shortTitleFr = "Directeur",
         descriptionFr = "Vue multi-agences stratégique, finances SYSCOHADA, gouvernance, RH et 27 privilèges.",
-        defaultScope = DataIsolationScope.ALL_TENANT_AGENCIES
+        defaultScope = DataIsolationScope.ALL_TENANT_AGENCIES,
+        privilegeRank = 100
     ),
     GERANT_AGENCE(
         labelFr = "Gérant d'Agence",
         shortTitleFr = "Gérant",
         descriptionFr = "Pilotage opérationnel, caisse locale, équipe et tarifs isolés à son agence.",
-        defaultScope = DataIsolationScope.SINGLE_AGENCY
+        defaultScope = DataIsolationScope.SINGLE_AGENCY,
+        privilegeRank = 70
     ),
     CAISSIER(
         labelFr = "Caissier / Accueil Comptoir",
         shortTitleFr = "Caisse",
         descriptionFr = "Prise de commande, encaissements Mobile Money/Espèces et clôture Z de sa session.",
-        defaultScope = DataIsolationScope.SINGLE_AGENCY
+        defaultScope = DataIsolationScope.SINGLE_AGENCY,
+        privilegeRank = 40
     ),
     OPERATEUR(
         labelFr = "Opérateur Atelier",
         shortTitleFr = "Atelier",
         descriptionFr = "Production textile (lavage, séchage, repassage) et scan étiquettes sans aucune donnée financière.",
-        defaultScope = DataIsolationScope.SINGLE_AGENCY
+        defaultScope = DataIsolationScope.SINGLE_AGENCY,
+        privilegeRank = 20
     ),
     CONTROLE_QUALITE(
         labelFr = "Contrôle Qualité & SAV",
         shortTitleFr = "Qualité",
         descriptionFr = "Inspection avant/après, validation Prêt, renvoi en reprise et SAV sans données financières.",
-        defaultScope = DataIsolationScope.SINGLE_AGENCY
+        defaultScope = DataIsolationScope.SINGLE_AGENCY,
+        privilegeRank = 30
     ),
     LIVREUR(
         labelFr = "Livreur GPS",
         shortTitleFr = "Livreur",
         descriptionFr = "Tournées par quartier, itinéraire GPS, preuve de livraison et COD uniquement sur ses colis.",
-        defaultScope = DataIsolationScope.PERSONAL_ASSIGNMENTS
+        defaultScope = DataIsolationScope.PERSONAL_ASSIGNMENTS,
+        privilegeRank = 20
     );
 
     companion object {
         fun fromEmployeeRole(employeeRole: EmployeeRole): WorkspaceRole = when (employeeRole) {
             EmployeeRole.DIRECTEUR -> DIRECTEUR
+            EmployeeRole.GERANT_AGENCE -> GERANT_AGENCE
             EmployeeRole.CAISSIER -> CAISSIER
             EmployeeRole.OPERATEUR -> OPERATEUR
             EmployeeRole.CONTROLE_QUALITE -> CONTROLE_QUALITE
@@ -422,6 +430,94 @@ data class ActiveRoleSession(
         role == WorkspaceRole.LIVREUR -> "Tournées de $operatorName${isolatedAgency?.let { " · $it" } ?: ""}"
         isolatedAgency != null -> "Agence isolée : $isolatedAgency"
         else -> "Toutes les agences (Multi-agences)"
+    }
+
+    /**
+     * Anti-privilege-escalation check:
+     * Only DIRECTEUR may assign DIRECTEUR or GERANT_AGENCE.
+     * Any other role with user-management permission can only assign roles strictly below its own rank.
+     */
+    fun canAssignRole(targetRole: WorkspaceRole): Boolean {
+        if (!has(AccessPermission.MANAGE_USERS_AND_ROLES)) return false
+        if (role == WorkspaceRole.DIRECTEUR) return true
+        return targetRole.privilegeRank < role.privilegeRank
+    }
+
+    /**
+     * Anti-privilege-escalation guard for creating/updating/deleting employee records:
+     * - Blocks non-Directors from modifying a record belonging to an equal/higher role (e.g., DIRECTEUR/GERANT_AGENCE)
+     * - Blocks self-role modification
+     * - Enforces isolated agency boundary for non-Directors
+     */
+    fun canModifyEmployee(
+        existingEmployee: EmployeeRecord?,
+        targetRole: WorkspaceRole,
+        targetAgencyName: String,
+        actorPhone: String = ""
+    ): Boolean {
+        if (!canAssignRole(targetRole)) return false
+        if (role != WorkspaceRole.DIRECTEUR) {
+            val ownAgency = isolatedAgency
+            if (!ownAgency.isNullOrBlank() && targetAgencyName.isNotBlank() &&
+                !targetAgencyName.equals(ownAgency, ignoreCase = true)
+            ) {
+                return false
+            }
+            if (existingEmployee != null) {
+                val existingRole = WorkspaceRole.fromRaw(existingEmployee.role)
+                if (existingRole.privilegeRank >= role.privilegeRank) return false
+                val samePersonByName = existingEmployee.fullName.trim().equals(operatorName.trim(), ignoreCase = true)
+                val actorDigits = actorPhone.filter { it.isDigit() }
+                val empDigits = existingEmployee.phone.filter { it.isDigit() }
+                val samePersonByPhone = actorDigits.length >= 8 && empDigits.length >= 8 &&
+                    actorDigits.takeLast(8) == empDigits.takeLast(8)
+                if ((samePersonByName || samePersonByPhone) && existingRole != targetRole) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+}
+
+/**
+ * Strict validator for QR codes and barcodes scanned via CameraX / ML Kit or entered manually.
+ * Prevents oversized payloads, control characters, script/URL injection, and malformed tags.
+ */
+object QrCodeValidator {
+    private val allowedPattern = Regex("^[A-Za-z0-9._:/|\\-]{3,80}$")
+    private val forbiddenTokens = listOf(
+        "javascript:", "data:", "file://", "http://", "https://", "<script", "</script", "drop table", "select "
+    )
+
+    fun validate(raw: String): Result<String> {
+        val cleaned = raw.trim()
+        if (cleaned.isEmpty()) {
+            return Result.failure(IllegalArgumentException("Code QR / code-barres vide."))
+        }
+        if (cleaned.length < 3 || cleaned.length > 80) {
+            return Result.failure(IllegalArgumentException("Code invalide : longueur attendue entre 3 et 80 caractères."))
+        }
+        if (cleaned.any { it.isISOControl() || it == '\n' || it == '\r' }) {
+            return Result.failure(IllegalArgumentException("Code invalide : caractères de contrôle non autorisés."))
+        }
+        val lower = cleaned.lowercase()
+        if (forbiddenTokens.any { lower.contains(it) }) {
+            return Result.failure(IllegalArgumentException("Format QR non reconnu par Pressing Pro (contenu bloqué)."))
+        }
+        if (!allowedPattern.matches(cleaned)) {
+            return Result.failure(IllegalArgumentException("Format d'étiquette invalide. Utilisez uniquement lettres, chiffres et - _ . : / |"))
+        }
+        return Result.success(cleaned)
+    }
+
+    /** Extracts a client portal tracking token (TRK-XXXX-XXXX-XXXX) from either raw token or pipe-delimited QR payload. */
+    fun extractTrackingToken(raw: String): String? {
+        val validated = validate(raw).getOrNull() ?: return null
+        val upper = validated.uppercase()
+        if (TrackingTokenGenerator.isValidFormat(upper)) return upper
+        val tokenSegment = upper.split("|", ":", "/").firstOrNull { TrackingTokenGenerator.isValidFormat(it) }
+        return tokenSegment
     }
 }
 
