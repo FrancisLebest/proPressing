@@ -420,7 +420,7 @@ data class ActiveRoleSession(
             "settings" -> canEditAgencySettingsAndTariffs || canManageLocalPrinter || canRunCashClose
             "roles_rbac" -> has(AccessPermission.EDIT_PRIVILEGE_MATRIX) || has(AccessPermission.VIEW_SECURITY_AUDIT_LOG)
             else -> {
-                val req = RolePermissionMatrix.requiredPermissionForRoute(route) ?: return true
+                val req = RolePermissionMatrix.requiredPermissionForRoute(route) ?: return false
                 has(req)
             }
         }

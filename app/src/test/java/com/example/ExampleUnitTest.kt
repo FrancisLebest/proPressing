@@ -1091,17 +1091,21 @@ class ExampleUnitTest {
         assertEquals(com.example.data.WorkspaceRole.LIVREUR, drvSession.role)
         assertEquals("Agence Cocody", drvSession.isolatedAgency)
 
-        // Route guards: non-directors never access roles_rbac; non-financial roles never access finance/pos/billing
+        // Route guards: non-directors never access roles_rbac; non-financial roles never access finance/pos_cash/invoices; unknown routes fail-closed
         assertTrue(dirSession.canAccessRoute("roles_rbac"))
         assertFalse(mgrSession.canAccessRoute("roles_rbac"))
         assertFalse(cashSession.canAccessRoute("finance"))
+        assertTrue(cashSession.canAccessRoute("pos_cash"))
         assertFalse(opSession.canAccessRoute("finance"))
-        assertFalse(opSession.canAccessRoute("pos"))
+        assertFalse(opSession.canAccessRoute("pos_cash"))
+        assertFalse(opSession.canAccessRoute("invoices"))
         assertFalse(qcSession.canAccessRoute("finance"))
-        assertFalse(qcSession.canAccessRoute("pos"))
+        assertFalse(qcSession.canAccessRoute("pos_cash"))
         assertFalse(drvSession.canAccessRoute("finance"))
         assertFalse(drvSession.canAccessRoute("workshop_tracker"))
         assertFalse(drvSession.canAccessRoute("settings"))
+        assertFalse(dirSession.canAccessRoute("unknown_secret_route"))
+        assertFalse(opSession.canAccessRoute("unknown_secret_route"))
 
         // Anti-privilege escalation: Gérant d'Agence CANNOT create/edit DIRECTEUR or GERANT_AGENCE or cross-agency staff
         assertFalse(mgrSession.canAssignRole(com.example.data.WorkspaceRole.DIRECTEUR))
