@@ -924,4 +924,99 @@ class PressingRepository(
             Result.failure(e)
         }
     }
+
+    // --- RBAC+ABAC MANAGER POLICIES & ADMINISTRATIVE APPROVAL WORKFLOW ---
+
+    fun observeManagerPolicies(userId: String): Flow<List<ManagerAccessPolicy>> = flow {
+        requireUserId(userId)
+        val path = "users/$userId/manager_policies"
+        emitAll(
+            userDoc(userId).collection("manager_policies")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(ManagerAccessPolicy::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedBy { it.employeeName.lowercase() }
+                }
+                .logAndRethrow(userId, OperationType.LIST, path)
+        )
+    }
+
+    suspend fun saveManagerPolicy(userId: String, policy: ManagerAccessPolicy): Result<Unit> {
+        val docId = policy.id.ifBlank {
+            policy.employeeId.ifBlank { "policy_${policy.employeeName.hashCode().toUInt()}" }
+        }.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(100)
+        val path = "users/$userId/manager_policies/$docId"
+        return try {
+            requireUserId(userId)
+            val docRef = userDoc(userId).collection("manager_policies").document(docId)
+            val exists = docRef.get().await().exists()
+            docRef.set(policy.toFirestoreMap(userId, isCreate = !exists)).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
+    fun observeApprovalRequests(userId: String): Flow<List<ApprovalRequestRecord>> = flow {
+        requireUserId(userId)
+        val path = "users/$userId/approval_requests"
+        emitAll(
+            userDoc(userId).collection("approval_requests")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(ApprovalRequestRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        .take(50)
+                }
+                .logAndRethrow(userId, OperationType.LIST, path)
+        )
+    }
+
+    suspend fun submitApprovalRequest(userId: String, request: ApprovalRequestRecord): Result<String> {
+        val path = "users/$userId/approval_requests"
+        return try {
+            requireUserId(userId)
+            val docRef = userDoc(userId).collection("approval_requests").document()
+            docRef.set(request.toCreateMap(userId)).await()
+            Result.success(docRef.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun reviewApprovalRequest(
+        userId: String,
+        requestId: String,
+        newStatus: ApprovalStatus,
+        reviewedBy: String,
+        reviewNote: String,
+        executedAtMillis: Long = 0L
+    ): Result<Unit> {
+        val path = "users/$userId/approval_requests/$requestId"
+        return try {
+            requireUserId(userId)
+            require(requestId.isNotBlank())
+            userDoc(userId).collection("approval_requests").document(requestId).update(
+                mapOf(
+                    "status" to newStatus.name,
+                    "reviewedBy" to reviewedBy.trim().take(100),
+                    "reviewNote" to reviewNote.trim().take(240),
+                    "executedAtMillis" to executedAtMillis,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
 }

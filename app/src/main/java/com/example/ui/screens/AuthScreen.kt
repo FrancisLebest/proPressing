@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.Email
@@ -41,9 +43,11 @@ import androidx.compose.material.icons.rounded.LocalShipping
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Phone
 import androidx.compose.material.icons.rounded.PointOfSale
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.SwitchAccount
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Visibility
@@ -82,9 +86,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -133,6 +139,9 @@ fun AuthScreen(
 
     var showForgotPasswordDialog by rememberSaveable { mutableStateOf(false) }
     var forgotPasswordEmail by rememberSaveable { mutableStateOf("") }
+    var showTermsDialog by rememberSaveable { mutableStateOf(false) }
+    var showPrivacyDialog by rememberSaveable { mutableStateOf(false) }
+    var showSupportDialog by rememberSaveable { mutableStateOf(false) }
 
     val bgBrush = Brush.verticalGradient(
         listOf(MidnightNavy, DeepNavySurface, Color(0xFF0A2463))
@@ -153,6 +162,7 @@ fun AuthScreen(
                     .imePadding()
             ) {
                 AuthBrandShowcasePane(
+                    isRegistrationMode = uiState.isRegistrationMode,
                     modifier = Modifier
                         .weight(1.05f)
                         .fillMaxHeight()
@@ -187,10 +197,19 @@ fun AuthScreen(
                         onPhoneRegister = { name, dial, phone, password, confirm, accepted ->
                             authViewModel.registerWithPhone(name, dial, phone, password, confirm, accepted)
                         },
+                        onUsernameSignIn = { username, password ->
+                            authViewModel.signInWithUsername(username, password)
+                        },
+                        onUsernameRegister = { name, username, password, confirm, accepted ->
+                            authViewModel.registerWithUsername(name, username, password, confirm, accepted)
+                        },
                         onForgotPassword = { prefill ->
                             forgotPasswordEmail = prefill
                             showForgotPasswordDialog = true
                         },
+                        onOpenTerms = { showTermsDialog = true },
+                        onOpenPrivacy = { showPrivacyDialog = true },
+                        onOpenSupport = { showSupportDialog = true },
                         onClearMessages = { authViewModel.clearMessages() },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -209,23 +228,43 @@ fun AuthScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Compact Top Brand Header (airy, never overlaps)
-                Column(
+                // Compact Photographic Brand Header faithful to both Gestion Pro Africa mockups
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, AfricaGold.copy(alpha = 0.5f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .widthIn(max = 520.dp)
                 ) {
-                    GestionProBrandHeader(compact = true)
-                    Text(
-                        text = "Digitalisez et pilotez votre pressing en toute simplicité !",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        softWrap = true
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.img_onboarding_employee),
+                            contentDescription = "Professionnelle Pressing Pro Africa",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(74.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            GestionProBrandHeader(compact = true)
+                            Text(
+                                text = "Pressing · Laverie · Blanchisserie",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = AfricaGoldBright,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 // Main Login / Registration Card
@@ -248,10 +287,19 @@ fun AuthScreen(
                     onPhoneRegister = { name, dial, phone, password, confirm, accepted ->
                         authViewModel.registerWithPhone(name, dial, phone, password, confirm, accepted)
                     },
+                    onUsernameSignIn = { username, password ->
+                        authViewModel.signInWithUsername(username, password)
+                    },
+                    onUsernameRegister = { name, username, password, confirm, accepted ->
+                        authViewModel.registerWithUsername(name, username, password, confirm, accepted)
+                    },
                     onForgotPassword = { prefill ->
                         forgotPasswordEmail = prefill
                         showForgotPasswordDialog = true
                     },
+                    onOpenTerms = { showTermsDialog = true },
+                    onOpenPrivacy = { showPrivacyDialog = true },
+                    onOpenSupport = { showSupportDialog = true },
                     onClearMessages = { authViewModel.clearMessages() },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -309,10 +357,23 @@ fun AuthScreen(
             }
         )
     }
+
+    if (showTermsDialog) {
+        LegalConsentDialog(isPrivacyPolicy = false, onDismiss = { showTermsDialog = false })
+    }
+    if (showPrivacyDialog) {
+        LegalConsentDialog(isPrivacyPolicy = true, onDismiss = { showPrivacyDialog = false })
+    }
+    if (showSupportDialog) {
+        AuthSupportDialog(onDismiss = { showSupportDialog = false })
+    }
 }
 
 @Composable
-private fun AuthBrandShowcasePane(modifier: Modifier = Modifier) {
+private fun AuthBrandShowcasePane(
+    isRegistrationMode: Boolean = false,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -320,65 +381,67 @@ private fun AuthBrandShowcasePane(modifier: Modifier = Modifier) {
         GestionProBrandHeader(compact = false)
 
         Text(
-            text = "SaaS de gestion de Pressing, Laverie et Blanchisserie",
-            style = MaterialTheme.typography.bodyLarge,
+            text = "Gestion de Pressing, Laverie et Blanchisserie",
+            style = MaterialTheme.typography.titleMedium,
             color = Color(0xFFD6E4FF),
+            fontWeight = FontWeight.Medium,
             softWrap = true
         )
 
-        Text(
-            text = "Digitalisez et pilotez votre pressing en toute simplicité !",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.White,
-            softWrap = true
-        )
-
+        // Hero Professional Photography faithful to both Gestion Pro Africa mockups
         Card(
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)),
-            border = BorderStroke(1.dp, AfricaGold.copy(alpha = 0.45f)),
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = BorderStroke(2.dp, AfricaGold),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(230.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            listOf(RoyalBlue.copy(alpha = 0.35f), MidnightNavy.copy(alpha = 0.85f))
+            Box(modifier = Modifier.fillMaxSize()) {
+                Image(
+                    painter = painterResource(id = R.drawable.img_onboarding_employee),
+                    contentDescription = "Gestionnaire Pressing Pro Africa",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, MidnightNavy.copy(alpha = 0.78f))
+                            )
                         )
-                    )
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+                )
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = AfricaGold
+                    color = AfricaGold,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(14.dp)
                 ) {
                     Text(
-                        text = "Conçu en Afrique, pour les entreprises d'Afrique",
+                        text = "La gestion professionnelle, simplement.",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MidnightNavy,
-                        softWrap = true,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
-                Text(
-                    text = "Multi-agences isolées · 6 rôles & 27 privilèges · Caisse Mobile Money · IA Gemini",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFE2E8F0),
-                    fontWeight = FontWeight.Medium,
-                    softWrap = true
-                )
             }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            AuthFeatureRow(Icons.Rounded.Checkroom, "Gestion complète des commandes & atelier QR")
-            AuthFeatureRow(Icons.Rounded.People, "Suivi des clients, remises & fidélité VIP")
-            AuthFeatureRow(Icons.Rounded.PointOfSale, "Caisse Mobile Money, facturation & SYSCOHADA")
-            AuthFeatureRow(Icons.Rounded.LocalShipping, "Livraisons GPS & espaces isolés par rôle")
+            if (isRegistrationMode) {
+                AuthFeatureRow(Icons.Rounded.CheckCircle, "Gérez vos commandes")
+                AuthFeatureRow(Icons.Rounded.People, "Suivez vos clients")
+                AuthFeatureRow(Icons.Rounded.PointOfSale, "Analysez vos revenus")
+                AuthFeatureRow(Icons.Rounded.LocalShipping, "Partout, à tout moment")
+            } else {
+                AuthFeatureRow(Icons.Rounded.Checkroom, "Gérez vos commandes de A à Z")
+                AuthFeatureRow(Icons.Rounded.People, "Suivez vos clients et paiements")
+                AuthFeatureRow(Icons.Rounded.PointOfSale, "Boostez la performance de votre pressing")
+            }
         }
     }
 }
@@ -394,7 +457,12 @@ private fun AuthActionCard(
     onEmailRegister: (String, String, String, String, Boolean) -> Unit,
     onPhoneSignIn: (String, String, String) -> Unit,
     onPhoneRegister: (String, String, String, String, String, Boolean) -> Unit,
+    onUsernameSignIn: (String, String) -> Unit,
+    onUsernameRegister: (String, String, String, String, Boolean) -> Unit,
     onForgotPassword: (String) -> Unit,
+    onOpenTerms: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onOpenSupport: () -> Unit,
     onClearMessages: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -403,6 +471,7 @@ private fun AuthActionCard(
     // Form state (preserved across orientation/recomposition)
     var fullName by rememberSaveable { mutableStateOf("") }
     var emailInput by rememberSaveable { mutableStateOf("") }
+    var usernameInput by rememberSaveable { mutableStateOf("") }
     var selectedCountryIso by rememberSaveable { mutableStateOf(AfricanDialCodes.defaultCountry.isoCode) }
     val selectedCountry = remember(selectedCountryIso) {
         AfricanDialCodes.supported.firstOrNull { it.isoCode == selectedCountryIso }
@@ -524,14 +593,14 @@ private fun AuthActionCard(
                 }
             }
 
-            // 2. Responsive 3-Method Auth Selector (Téléphone / E-mail / Google)
+            // 2. Responsive 4-Method Auth Selector (Google / E-mail / Téléphone / Login)
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val compactTabs = maxWidth < 340.dp
+                    val compactTabs = maxWidth < 400.dp
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = Color(0xFFF1F5F9),
@@ -545,14 +614,14 @@ private fun AuthActionCard(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             AuthMethodTab(
-                                label = "Téléphone",
-                                icon = Icons.Rounded.Phone,
-                                selected = uiState.selectedMethod == AuthMethod.PHONE_PASSWORD,
+                                label = "Google",
+                                icon = Icons.Rounded.AccountCircle,
+                                selected = uiState.selectedMethod == AuthMethod.GOOGLE,
                                 compact = compactTabs,
-                                onClick = { onSelectMethod(AuthMethod.PHONE_PASSWORD) },
+                                onClick = { onSelectMethod(AuthMethod.GOOGLE) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("auth_tab_phone")
+                                    .testTag("auth_tab_google")
                             )
                             AuthMethodTab(
                                 label = "E-mail",
@@ -565,14 +634,24 @@ private fun AuthActionCard(
                                     .testTag("auth_tab_email")
                             )
                             AuthMethodTab(
-                                label = "Google",
-                                icon = Icons.Rounded.AccountCircle,
-                                selected = uiState.selectedMethod == AuthMethod.GOOGLE,
+                                label = "Tél.",
+                                icon = Icons.Rounded.Phone,
+                                selected = uiState.selectedMethod == AuthMethod.PHONE_PASSWORD,
                                 compact = compactTabs,
-                                onClick = { onSelectMethod(AuthMethod.GOOGLE) },
+                                onClick = { onSelectMethod(AuthMethod.PHONE_PASSWORD) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("auth_tab_google")
+                                    .testTag("auth_tab_phone")
+                            )
+                            AuthMethodTab(
+                                label = "Login",
+                                icon = Icons.Rounded.Badge,
+                                selected = uiState.selectedMethod == AuthMethod.USERNAME_LOGIN,
+                                compact = compactTabs,
+                                onClick = { onSelectMethod(AuthMethod.USERNAME_LOGIN) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("auth_tab_username")
                             )
                         }
                     }
@@ -580,9 +659,10 @@ private fun AuthActionCard(
 
                 Text(
                     text = when (uiState.selectedMethod) {
-                        AuthMethod.PHONE_PASSWORD -> "Mode actif : Téléphone + Mot de passe"
+                        AuthMethod.GOOGLE -> "Mode recommandé : Compte Google (activé et prêt)"
                         AuthMethod.EMAIL_PASSWORD -> "Mode actif : E-mail + Mot de passe"
-                        AuthMethod.GOOGLE -> "Mode actif : Compte Google professionnel"
+                        AuthMethod.PHONE_PASSWORD -> "Mode actif : Téléphone (${selectedCountry.dialCode}) + Mot de passe"
+                        AuthMethod.USERNAME_LOGIN -> "Mode actif : Identifiant unique (Login) + Mot de passe"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF475569),
@@ -604,27 +684,53 @@ private fun AuthActionCard(
                             .fillMaxWidth()
                             .testTag("auth_error_banner")
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ErrorOutline,
-                                contentDescription = null,
-                                tint = CrimsonDanger,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .padding(top = 1.dp)
-                            )
-                            Text(
-                                text = err,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF991B1B),
-                                fontWeight = FontWeight.Medium,
-                                softWrap = true,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = CrimsonDanger,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .padding(top = 1.dp)
+                                )
+                                Text(
+                                    text = err,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF991B1B),
+                                    fontWeight = FontWeight.Medium,
+                                    softWrap = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (uiState.isEmailProviderDisabled) {
+                                Button(
+                                    onClick = {
+                                        onSelectMethod(AuthMethod.GOOGLE)
+                                        onGoogleSignIn(false)
+                                    },
+                                    enabled = !uiState.isLoading,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = RoyalBlue,
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .testTag("auth_error_google_fallback_button")
+                                ) {
+                                    Icon(Icons.Rounded.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Continuer avec Google maintenant", fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -1232,9 +1338,186 @@ private fun AuthActionCard(
                         }
                     }
                 }
+
+                AuthMethod.USERNAME_LOGIN -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (uiState.isRegistrationMode) {
+                            AuthTextField(
+                                value = fullName,
+                                onValueChange = { fullName = it; onClearMessages() },
+                                label = "Nom complet *",
+                                placeholder = "Ex. : Kouassi Yao",
+                                leadingIcon = Icons.Rounded.Person,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Words,
+                                    imeAction = ImeAction.Next
+                                ),
+                                testTag = "auth_username_fullname_input"
+                            )
+                        }
+
+                        AuthTextField(
+                            value = usernameInput,
+                            onValueChange = { usernameInput = it.filter { c -> !c.isWhitespace() }.take(32); onClearMessages() },
+                            label = "Identifiant de connexion (Login) *",
+                            placeholder = "ex. pressing.cocody",
+                            leadingIcon = Icons.Rounded.Badge,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Ascii,
+                                imeAction = ImeAction.Next
+                            ),
+                            testTag = "auth_username_input"
+                        )
+
+                        AuthPasswordField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it; onClearMessages() },
+                            label = "Mot de passe *",
+                            placeholder = "Entrez votre mot de passe",
+                            visible = passwordVisible,
+                            onToggleVisibility = { passwordVisible = !passwordVisible },
+                            imeAction = if (uiState.isRegistrationMode) ImeAction.Next else ImeAction.Done,
+                            onDone = {
+                                focusManager.clearFocus()
+                                if (!uiState.isLoading && !uiState.isRegistrationMode) {
+                                    onUsernameSignIn(usernameInput, passwordInput)
+                                }
+                            },
+                            testTag = "auth_username_password_input"
+                        )
+
+                        if (uiState.isRegistrationMode) {
+                            PasswordStrengthBar(
+                                password = passwordInput,
+                                score = passwordStrength.score,
+                                level = passwordStrength.level
+                            )
+                            AuthPasswordField(
+                                value = confirmPasswordInput,
+                                onValueChange = { confirmPasswordInput = it; onClearMessages() },
+                                label = "Confirmer le mot de passe *",
+                                placeholder = "Confirmez votre mot de passe",
+                                visible = confirmPasswordVisible,
+                                onToggleVisibility = { confirmPasswordVisible = !confirmPasswordVisible },
+                                imeAction = ImeAction.Done,
+                                onDone = {
+                                    focusManager.clearFocus()
+                                    if (!uiState.isLoading) {
+                                        onUsernameRegister(fullName, usernameInput, passwordInput, confirmPasswordInput, acceptedTerms)
+                                    }
+                                },
+                                testTag = "auth_username_confirm_input"
+                            )
+                            AuthTermsCheckbox(
+                                checked = acceptedTerms,
+                                onCheckedChange = { acceptedTerms = it },
+                                onOpenTerms = onOpenTerms,
+                                onOpenPrivacy = onOpenPrivacy
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                focusManager.clearFocus()
+                                if (uiState.isRegistrationMode) {
+                                    onUsernameRegister(fullName, usernameInput, passwordInput, confirmPasswordInput, acceptedTerms)
+                                } else {
+                                    onUsernameSignIn(usernameInput, passwordInput)
+                                }
+                            },
+                            enabled = !uiState.isLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .testTag("auth_username_submit_button"),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = RoyalBlue,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            if (uiState.isLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.5.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Traitement...", fontWeight = FontWeight.Bold)
+                            } else {
+                                Text(
+                                    text = if (uiState.isRegistrationMode) "S'inscrire" else "Se connecter",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        AuthModeToggleRow(
+                            isRegistrationMode = uiState.isRegistrationMode,
+                            onToggle = { onToggleRegistration(!uiState.isRegistrationMode) }
+                        )
+
+                        AuthOrDivider()
+
+                        GoogleQuickActionButton(
+                            isLoading = uiState.isLoading,
+                            onClick = { onGoogleSignIn(false) },
+                            testTag = "auth_username_google_shortcut_button"
+                        )
+                    }
+                }
             }
 
-            // 5. Security Trust Strip
+            // 5. Public Registration Security Notice + Support Action
+            if (uiState.isRegistrationMode && uiState.selectedMethod != AuthMethod.GOOGLE) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = SoftBlueContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "L'inscription crée exclusivement un compte Administrateur Pressing (PRESSING_ADMIN). Les rôles Gestionnaires sont créés depuis votre espace sécurisé.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MidnightNavy,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onOpenTerms,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("CGU", style = MaterialTheme.typography.labelMedium, color = RoyalBlue, fontWeight = FontWeight.SemiBold)
+                }
+                Text("·", color = Color(0xFF94A3B8))
+                TextButton(
+                    onClick = onOpenPrivacy,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text("Confidentialité", style = MaterialTheme.typography.labelMedium, color = RoyalBlue, fontWeight = FontWeight.SemiBold)
+                }
+                Text("·", color = Color(0xFF94A3B8))
+                TextButton(
+                    onClick = onOpenSupport,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("auth_contact_support_button")
+                ) {
+                    Icon(Icons.Rounded.SupportAgent, contentDescription = null, tint = RoyalBlue, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Assistance", style = MaterialTheme.typography.labelMedium, color = RoyalBlue, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            // 6. Security Trust Strip
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 color = Color(0xFFF1F5F9),
@@ -1425,30 +1708,46 @@ private fun PasswordStrengthBar(
     level: PasswordStrengthLevel
 ) {
     if (password.isEmpty()) return
+    val activeSegments = when (level) {
+        PasswordStrengthLevel.WEAK -> 1
+        PasswordStrengthLevel.MEDIUM -> 2
+        PasswordStrengthLevel.STRONG, PasswordStrengthLevel.VERY_STRONG -> 3
+    }
     val color = when (level) {
         PasswordStrengthLevel.WEAK -> CrimsonDanger
         PasswordStrengthLevel.MEDIUM -> AmberWarning
         PasswordStrengthLevel.STRONG, PasswordStrengthLevel.VERY_STRONG -> EmeraldSuccess
     }
-    Column(
+    val strengthLabelFr = when (level) {
+        PasswordStrengthLevel.WEAK -> "Force : Faible"
+        PasswordStrengthLevel.MEDIUM -> "Force : Moyenne"
+        PasswordStrengthLevel.STRONG -> "Force : Forte"
+        PasswordStrengthLevel.VERY_STRONG -> "Force : Très forte"
+    }
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        LinearProgressIndicator(
-            progress = { (score / 4f).coerceIn(0.15f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(50)),
-            color = color,
-            trackColor = Color(0xFFE2E8F0)
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            repeat(3) { idx ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (idx < activeSegments) color else Color(0xFFE2E8F0))
+                )
+            }
+        }
         Text(
-            text = "Robustesse : ${level.labelFr} (8+ car., majuscule, minuscule, chiffre)",
+            text = strengthLabelFr,
             style = MaterialTheme.typography.labelSmall,
             color = color,
-            fontWeight = FontWeight.SemiBold,
-            softWrap = true
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -1456,25 +1755,29 @@ private fun PasswordStrengthBar(
 @Composable
 private fun AuthTermsCheckbox(
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    onOpenTerms: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {}
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) },
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = CheckboxDefaults.colors(checkedColor = RoyalBlue)
-        )
-        Text(
-            text = "J'accepte les Conditions d'utilisation et la Politique de confidentialité de GESTION PRO AFRICA.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF334155),
-            softWrap = true
-        )
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onCheckedChange(!checked) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = CheckboxDefaults.colors(checkedColor = RoyalBlue)
+            )
+            Text(
+                text = "J'accepte les Conditions d'utilisation et la Politique de confidentialité de GESTION PRO AFRICA. *",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF334155),
+                softWrap = true
+            )
+        }
     }
 }
 

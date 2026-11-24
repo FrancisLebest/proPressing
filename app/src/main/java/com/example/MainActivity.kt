@@ -43,8 +43,12 @@ import com.example.data.PressingRepository
 import com.example.data.local.OfflineSyncRepository
 import com.example.data.local.PressingLocalDatabase
 import com.example.ui.screens.AuthScreen
+import com.example.ui.screens.BrandSplashScreen
 import com.example.ui.screens.MainWorkspace
+import com.example.ui.screens.OnboardingCarouselScreen
+import com.example.ui.screens.OnboardingPrefs
 import com.example.ui.screens.SetupWizardScreen
+import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.PressingProTheme
 import com.example.ui.viewmodel.AuthUiState
 import com.example.ui.viewmodel.AuthViewModel
@@ -63,15 +67,27 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            var darkTheme by remember { mutableStateOf(false) }
-            PressingProTheme(darkTheme = darkTheme) {
+            val savedMode = remember { AppThemeMode.fromRaw(OnboardingPrefs.getSavedThemeMode(this)) }
+            var themeMode by remember { mutableStateOf(savedMode) }
+            val isDarkExplicit = themeMode == AppThemeMode.DARK
+
+            PressingProTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AppRoot(
-                        isDarkTheme = darkTheme,
-                        onToggleDarkTheme = { darkTheme = it }
+                        themeMode = themeMode,
+                        isDarkTheme = isDarkExplicit,
+                        onSelectThemeMode = { next ->
+                            themeMode = next
+                            OnboardingPrefs.saveThemeMode(this, next.name)
+                        },
+                        onToggleDarkTheme = { dark ->
+                            val next = if (dark) AppThemeMode.DARK else AppThemeMode.LIGHT
+                            themeMode = next
+                            OnboardingPrefs.saveThemeMode(this, next.name)
+                        }
                     )
                 }
             }
@@ -81,18 +97,37 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppRoot(
+    themeMode: AppThemeMode,
     isDarkTheme: Boolean,
+    onSelectThemeMode: (AppThemeMode) -> Unit,
     onToggleDarkTheme: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     val authViewModel: AuthViewModel = viewModel()
     val sessionState by authViewModel.sessionState.collectAsStateWithLifecycle()
     val authUiState by authViewModel.uiState.collectAsStateWithLifecycle()
 
+    var splashCompleted by remember { mutableStateOf(false) }
+    var onboardingCompleted by remember {
+        mutableStateOf(OnboardingPrefs.isOnboardingCompleted(context))
+    }
+
+    if (!splashCompleted) {
+        BrandSplashScreen(onFinished = { splashCompleted = true })
+        return
+    }
+
     when (val session = sessionState) {
         AuthSessionState.CheckingSession,
         AuthSessionState.Unauthenticated -> {
-            // Unauthenticated session: only AuthScreen is composed; zero Firestore queries run
-            AuthScreen(authViewModel = authViewModel)
+            if (!onboardingCompleted) {
+                OnboardingCarouselScreen(
+                    onComplete = { onboardingCompleted = true }
+                )
+            } else {
+                // Unauthenticated session: only AuthScreen is composed; zero Firestore queries run
+                AuthScreen(authViewModel = authViewModel)
+            }
         }
 
         is AuthSessionState.Authenticated -> {
@@ -103,7 +138,9 @@ fun AppRoot(
                     userProfile = userProfile,
                     authUiState = authUiState,
                     authViewModel = authViewModel,
+                    themeMode = themeMode,
                     isDarkTheme = isDarkTheme,
+                    onSelectThemeMode = onSelectThemeMode,
                     onToggleDarkTheme = onToggleDarkTheme
                 )
             }
@@ -116,7 +153,9 @@ private fun AuthenticatedPressingApp(
     userProfile: AuthUserProfile,
     authUiState: AuthUiState,
     authViewModel: AuthViewModel,
+    themeMode: AppThemeMode,
     isDarkTheme: Boolean,
+    onSelectThemeMode: (AppThemeMode) -> Unit,
     onToggleDarkTheme: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -215,7 +254,9 @@ private fun AuthenticatedPressingApp(
                     userProfile = userProfile,
                     authUiState = authUiState,
                     viewModel = viewModel,
+                    themeMode = themeMode,
                     isDarkTheme = isDarkTheme,
+                    onSelectThemeMode = onSelectThemeMode,
                     onToggleDarkTheme = onToggleDarkTheme,
                     onReopenSetupWizard = { forceSetupWizard = true },
                     onUpdateDisplayName = { authViewModel.updateDisplayName(it) },

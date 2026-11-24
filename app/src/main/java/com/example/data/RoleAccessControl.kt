@@ -413,7 +413,7 @@ data class ActiveRoleSession(
 
     fun canAccessRoute(route: String): Boolean {
         return when (route) {
-            "dashboard", "help", "client_portal", "more" -> true
+            "dashboard", "help", "client_portal", "more", "notifications", "profile" -> true
             "orders" -> canViewOperationalOrders
             "order_detail" -> canViewOperationalOrders || canViewDeliveryCodAmount
             "finance" -> has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA) || has(AccessPermission.VIEW_AGENCY_REVENUE)

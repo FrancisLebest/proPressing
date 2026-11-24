@@ -10,6 +10,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
+enum class AppThemeMode(val labelFr: String) {
+    SYSTEM("Automatique (Système)"),
+    LIGHT("Mode clair"),
+    DARK("Mode sombre");
+
+    companion object {
+        fun fromRaw(raw: String?): AppThemeMode =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: SYSTEM
+    }
+}
+
 private val LightPressingScheme = lightColorScheme(
     primary = RoyalBlue,
     onPrimary = CrispWhite,
@@ -30,7 +41,7 @@ private val LightPressingScheme = lightColorScheme(
     surfaceVariant = Color(0xFFEAF0FB),
     onSurfaceVariant = MutedSlate,
     outline = SoftBorder,
-    outlineVariant = Color(0xFFE8EEF8),
+    outlineVariant = Color(0xFFE2E8F0),
     error = CrimsonDanger,
     onError = CrispWhite,
     errorContainer = CrimsonContainer,
@@ -63,9 +74,9 @@ private val DarkPressingScheme = darkColorScheme(
 )
 
 val PressingShapes = Shapes(
-    small = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
+    large = RoundedCornerShape(24.dp),
     extraLarge = RoundedCornerShape(28.dp)
 )
 
@@ -81,4 +92,17 @@ fun PressingProTheme(
         shapes = PressingShapes,
         content = content
     )
+}
+
+@Composable
+fun PressingProTheme(
+    themeMode: AppThemeMode,
+    content: @Composable () -> Unit
+) {
+    val dark = when (themeMode) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+    }
+    PressingProTheme(darkTheme = dark, content = content)
 }

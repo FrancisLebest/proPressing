@@ -126,10 +126,15 @@ import com.example.data.RolePermissionMatrix
 import com.example.data.SubscriptionPlan
 import com.example.data.TenantDataScoper
 import com.example.data.WorkspaceRole
+import com.example.data.ApprovalStatus
+import com.example.ui.components.GPACenterFabBottomBar
+import com.example.ui.components.GPASupportSessionBanner
+import com.example.ui.components.GpaBottomNavEntry
 import com.example.ui.components.GestionProBrandHeader
 import com.example.ui.components.RoleBadgeChip
 import com.example.ui.theme.AfricaGold
 import com.example.ui.theme.AmberContainer
+import com.example.ui.theme.AppThemeMode
 import com.example.ui.theme.CrimsonDanger
 import com.example.ui.theme.EmeraldContainer
 import com.example.ui.theme.EmeraldSuccess
@@ -149,7 +154,9 @@ fun MainWorkspace(
     userProfile: AuthUserProfile,
     authUiState: AuthUiState,
     viewModel: PressingViewModel,
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     isDarkTheme: Boolean,
+    onSelectThemeMode: (AppThemeMode) -> Unit = {},
     onToggleDarkTheme: (Boolean) -> Unit,
     onReopenSetupWizard: () -> Unit,
     onUpdateDisplayName: (String) -> Unit,
@@ -176,6 +183,9 @@ fun MainWorkspace(
     val isSyncingOffline by viewModel.isSyncingOffline.collectAsStateWithLifecycle()
     val pushNotifications by viewModel.pushNotificationsState.collectAsStateWithLifecycle()
     val fcmTopics by viewModel.fcmTopics.collectAsStateWithLifecycle()
+    val managerPolicies by viewModel.managerPoliciesState.collectAsStateWithLifecycle()
+    val approvalRequests by viewModel.approvalRequestsState.collectAsStateWithLifecycle()
+    val supportSession by viewModel.supportSession.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var notifPermissionGranted by remember {
@@ -232,7 +242,8 @@ fun MainWorkspace(
     val lateOrders = remember(orders) { orders.filter { it.isLate() } }
     val lowStocks = remember(stocks) { stocks.filter { it.isLowStock() || it.machineStatus != "OPERATIONAL" } }
     val openClaims = remember(claims) { claims.filter { it.status != "RESOLVED" } }
-    val alertCount = lateOrders.size + lowStocks.size + openClaims.size + pendingOfflineOrders.size
+    val pendingApprovals = remember(approvalRequests) { approvalRequests.count { it.statusEnum() == ApprovalStatus.PENDING } }
+    val alertCount = lateOrders.size + lowStocks.size + openClaims.size + pendingOfflineOrders.size + pendingApprovals
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -250,7 +261,7 @@ fun MainWorkspace(
         "new_order", "order_detail", "workshop_tracker", "ai_assistant", "catalog", "stocks",
         "deliveries", "staff", "roles_rbac", "claims", "client_portal",
         "pos_cash", "invoices", "reports", "saas_admin", "quotes",
-        "marketing", "help", "settings"
+        "marketing", "help", "settings", "notifications", "profile"
     )
     if (currentRoute in fullScreenRoutes && !activeRoleSession.canAccessRoute(currentRoute)) {
         AccessDeniedScreen(
@@ -337,8 +348,17 @@ fun MainWorkspace(
                 activeSession = activeRoleSession,
                 rolePermissionsMap = rolePermissionsMap,
                 auditLog = auditLog,
+                managerPolicies = managerPolicies,
+                approvalRequests = approvalRequests,
                 onTogglePermission = { role, perm -> viewModel.toggleRolePermission(role, perm) },
                 onResetRolePermissions = { role -> viewModel.resetRolePermissions(role) },
+                onSaveManagerPolicy = { policy -> viewModel.saveManagerPolicy(policy) },
+                onSubmitApprovalRequest = { op, ref, amt, cap, reason ->
+                    viewModel.submitApprovalRequest(op, ref, amt, cap, reason)
+                },
+                onReviewApprovalRequest = { req, approve, note ->
+                    viewModel.reviewApprovalRequest(req, approve, note)
+                },
                 onBack = { currentRoute = "dashboard" }
             )
             return
@@ -498,6 +518,12 @@ fun MainWorkspace(
                 orders = orders,
                 clients = clients,
                 transactions = transactions,
+                activeSupportSession = supportSession,
+                isSuperAdmin = activeRoleSession.isSuperAdmin,
+                onStartSupportSession = { ticket, reason, mins ->
+                    viewModel.startSupportSession(ticket, reason, mins)
+                },
+                onRevokeSupportSession = { viewModel.revokeSupportSession() },
                 onUpdateCompany = { viewModel.saveCompanyConfig(it) },
                 onBack = { currentRoute = "dashboard" }
             )
@@ -561,6 +587,58 @@ fun MainWorkspace(
             )
             return
         }
+
+        "notifications" -> {
+            NotificationsCenterScreen(
+                company = company,
+                activeSession = activeRoleSession,
+                orders = orders,
+                transactions = transactions,
+                stocks = stocks,
+                claims = claims,
+                approvalRequests = approvalRequests,
+                pushNotifications = pushNotifications,
+                pendingOfflineOrders = pendingOfflineOrders,
+                isOnline = isOnline,
+                isSyncingOffline = isSyncingOffline,
+                notifPermissionGranted = notifPermissionGranted,
+                fcmTopics = fcmTopics,
+                onRequestNotifPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
+                onSyncOfflineNow = { viewModel.syncPendingOfflineOrders() },
+                onOpenOrder = { orderId ->
+                    selectedOrderId = orderId
+                    currentRoute = "order_detail"
+                },
+                onNavigateRoute = { route -> currentRoute = route },
+                onBack = { currentRoute = "dashboard" }
+            )
+            return
+        }
+
+        "profile" -> {
+            ProfileHubScreen(
+                company = company,
+                userProfile = userProfile,
+                authUiState = authUiState,
+                activeSession = activeRoleSession,
+                themeMode = themeMode,
+                isOnline = isOnline,
+                pendingOfflineCount = pendingOfflineOrders.size,
+                onSelectThemeMode = onSelectThemeMode,
+                onUpdateDisplayName = onUpdateDisplayName,
+                onRefreshSession = onRefreshSession,
+                onSyncOfflineNow = { viewModel.syncPendingOfflineOrders() },
+                onOpenCompanyWizard = onReopenSetupWizard,
+                onNavigateRoute = { route -> currentRoute = route },
+                onSignOut = onSignOut,
+                onBack = { currentRoute = "dashboard" }
+            )
+            return
+        }
     }
 
     data class NavTab(val route: String, val label: String, val icon: ImageVector)
@@ -603,6 +681,8 @@ fun MainWorkspace(
             NavTab("ai_assistant", "Assistant IA Gemini", Icons.Rounded.AutoAwesome),
             NavTab("client_portal", "Portail Client", Icons.Rounded.Public),
             NavTab("saas_admin", "Super-Admin SaaS", Icons.Rounded.AdminPanelSettings),
+            NavTab("notifications", "Notifications & Alertes", Icons.Rounded.Notifications),
+            NavTab("profile", "Mon profil", Icons.Rounded.Badge),
             NavTab("help", "Aide & Support", Icons.Rounded.HelpOutline),
             NavTab("settings", "Paramètres", Icons.Rounded.Settings)
         ).filter { activeRoleSession.canAccessRoute(it.route) }
@@ -829,7 +909,7 @@ fun MainWorkspace(
                         },
                         actions = {
                             IconButton(
-                                onClick = { showNotifications = true },
+                                onClick = { currentRoute = "notifications" },
                                 modifier = Modifier
                                     .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                     .testTag("notifications_button")
@@ -846,8 +926,9 @@ fun MainWorkspace(
                                     Icon(Icons.Rounded.Notifications, contentDescription = "Notifications & Alertes")
                                 }
                             }
-                            // Read-only Top-Right Role Badge Pill (adapts to compact phones so search bar never clips)
+                            // Read-only Top-Right Role Badge Pill — opens Mon profil (zero role switching)
                             Surface(
+                                onClick = { currentRoute = "profile" },
                                 shape = RoundedCornerShape(50),
                                 color = SoftBlueContainer,
                                 modifier = Modifier
@@ -908,7 +989,9 @@ fun MainWorkspace(
                     )
                 },
                 floatingActionButton = {
-                    if ((currentRoute == "dashboard" || currentRoute == "orders") &&
+                    // On wide screens (where bottom bar is hidden), keep standard FAB for New Order
+                    if (isWideScreen &&
+                        (currentRoute == "dashboard" || currentRoute == "orders") &&
                         activeRoleSession.has(AccessPermission.CREATE_ORDER)
                     ) {
                         FloatingActionButton(
@@ -923,27 +1006,50 @@ fun MainWorkspace(
                 },
                 bottomBar = {
                     if (!isWideScreen) {
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                            tabs.forEach { tab ->
-                                NavigationBarItem(
-                                    selected = currentRoute == tab.route,
-                                    onClick = { currentRoute = tab.route },
-                                    icon = { Icon(tab.icon, contentDescription = tab.label) },
-                                    label = {
-                                        Text(
-                                            text = tab.label,
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = if (isCompactPhone) 10.sp else 11.sp
-                                            ),
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .heightIn(min = 48.dp)
-                                        .testTag("nav_tab_${tab.route}")
-                                )
+                        val canCreateOrder = activeRoleSession.has(AccessPermission.CREATE_ORDER)
+                        if (canCreateOrder && tabs.size >= 4) {
+                            val leftTwo = listOf(
+                                GpaBottomNavEntry("dashboard", "Accueil", Icons.Rounded.Dashboard),
+                                GpaBottomNavEntry("orders", "Commandes", Icons.Rounded.Checkroom)
+                            )
+                            val rightTwo = listOf(
+                                if (activeRoleSession.canAccessRoute("clients")) {
+                                    GpaBottomNavEntry("clients", "Clients", Icons.Rounded.People)
+                                } else {
+                                    GpaBottomNavEntry("pos_cash", "Caisse", Icons.Rounded.PointOfSale)
+                                },
+                                GpaBottomNavEntry("more", "Plus", Icons.Rounded.GridView)
+                            )
+                            GPACenterFabBottomBar(
+                                leftItems = leftTwo,
+                                rightItems = rightTwo,
+                                currentRoute = currentRoute,
+                                onSelectRoute = { currentRoute = it },
+                                onCenterFabClick = { currentRoute = "new_order" }
+                            )
+                        } else {
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                                tabs.forEach { tab ->
+                                    NavigationBarItem(
+                                        selected = currentRoute == tab.route,
+                                        onClick = { currentRoute = tab.route },
+                                        icon = { Icon(tab.icon, contentDescription = tab.label) },
+                                        label = {
+                                            Text(
+                                                text = tab.label,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = if (isCompactPhone) 10.sp else 11.sp
+                                                ),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .heightIn(min = 48.dp)
+                                            .testTag("nav_tab_${tab.route}")
+                                    )
+                                }
                             }
                         }
                     }
@@ -981,6 +1087,14 @@ fun MainWorkspace(
                         }
                     }
                     Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        // Audited Super-Admin Support Session Banner (Section 3.9)
+                        supportSession?.takeIf { it.isValidAt() }?.let { activeSupport ->
+                            GPASupportSessionBanner(
+                                session = activeSupport,
+                                onRevoke = { viewModel.revokeSupportSession() }
+                            )
+                        }
+
                         // Room Offline Cache & Auto-Sync Banner (shown whenever offline or pending orders await sync)
                         if (!isOnline || pendingOfflineOrders.isNotEmpty() || isSyncingOffline) {
                             Surface(

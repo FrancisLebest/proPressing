@@ -650,6 +650,67 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if false;
       }
+
+      // Politiques d'accès personnalisées & plafonds financiers par gestionnaire (RBAC+ABAC)
+      match /manager_policies/{policyId} {
+        allow get: if isOwner(userId) && isValidId(policyId);
+        allow list: if isOwner(userId);
+
+        allow create, update: if isOwner(userId) &&
+          isDirectorRole() &&
+          isValidId(policyId) &&
+          incoming().userId == userId &&
+          incoming().employeeId is string && incoming().employeeId.size() >= 1 && incoming().employeeId.size() <= 128 &&
+          incoming().employeeName is string && incoming().employeeName.size() >= 1 && incoming().employeeName.size() <= 120 &&
+          incoming().profileCode in ['RECEPTIONNISTE', 'CAISSIER', 'AGENT_ATELIER', 'GESTIONNAIRE_STOCK', 'LIVREUR', 'POLYVALENT', 'PERSONNALISE'] &&
+          incoming().maxDiscountPercent is int && incoming().maxDiscountPercent >= 0 && incoming().maxDiscountPercent <= 30 &&
+          incoming().maxRefundFcfa is int && incoming().maxRefundFcfa >= 0 && incoming().maxRefundFcfa <= 100000000 &&
+          incoming().maxExpenseFcfa is int && incoming().maxExpenseFcfa >= 0 && incoming().maxExpenseFcfa <= 100000000 &&
+          incoming().maxDisbursementFcfa is int && incoming().maxDisbursementFcfa >= 0 && incoming().maxDisbursementFcfa <= 100000000 &&
+          incoming().dailyOperationCapFcfa is int && incoming().dailyOperationCapFcfa >= 0 && incoming().dailyOperationCapFcfa <= 500000000 &&
+          incoming().accessStartHour is int && incoming().accessStartHour >= 0 && incoming().accessStartHour <= 23 &&
+          incoming().accessEndHour is int && incoming().accessEndHour >= 1 && incoming().accessEndHour <= 24 &&
+          incoming().active is bool &&
+          isValidTimestamp(incoming().updatedAt);
+
+        allow delete: if isOwner(userId) && isDirectorRole() && isValidId(policyId);
+      }
+
+      // Demandes de validation administrative pour opérations sensibles (immuables après exécution/rejet)
+      match /approval_requests/{requestId} {
+        allow get: if isOwner(userId) && isValidId(requestId) && matchesAgencyClaim(existing().agencyName);
+        allow list: if isOwner(userId) && matchesAgencyClaim(resource.data.agencyName);
+
+        allow create: if isOwner(userId) &&
+          isValidId(requestId) &&
+          matchesAgencyClaim(incoming().agencyName) &&
+          incoming().userId == userId &&
+          incoming().requestedBy is string && incoming().requestedBy.size() >= 1 && incoming().requestedBy.size() <= 100 &&
+          incoming().operationType in ['EXCEPTIONAL_DISCOUNT', 'REFUND', 'ORDER_CANCELLATION', 'LARGE_EXPENSE', 'CASH_ADJUSTMENT', 'STOCK_ADJUSTMENT', 'PRICE_OVERRIDE'] &&
+          incoming().amountFcfa is int && incoming().amountFcfa >= 0 && incoming().amountFcfa <= 100000000 &&
+          incoming().reason is string && incoming().reason.size() >= 1 && incoming().reason.size() <= 300 &&
+          incoming().payloadHash is string && incoming().payloadHash.size() >= 8 && incoming().payloadHash.size() <= 64 &&
+          incoming().status == 'PENDING' &&
+          isValidTimestamp(incoming().createdAt) &&
+          isValidTimestamp(incoming().updatedAt);
+
+        allow update: if isOwner(userId) &&
+          isDirectorRole() &&
+          isValidId(requestId) &&
+          existing().status in ['PENDING', 'APPROVED'] &&
+          incoming().userId == existing().userId &&
+          incoming().amountFcfa == existing().amountFcfa &&
+          incoming().operationType == existing().operationType &&
+          incoming().payloadHash == existing().payloadHash &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'status', 'reviewedBy', 'reviewNote', 'executedAtMillis', 'updatedAt'
+          ]) &&
+          incoming().status in ['APPROVED', 'REJECTED', 'EXECUTED', 'EXPIRED', 'CANCELLED'] &&
+          isValidTimestamp(incoming().updatedAt);
+
+        allow delete: if false;
+      }
     }
   }
 }

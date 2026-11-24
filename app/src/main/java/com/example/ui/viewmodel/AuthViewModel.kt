@@ -7,11 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.GoogleCredentialOutcome
 import com.example.core.fetchInteractiveGoogleIdToken
 import com.example.core.fetchSilentGoogleIdToken
+import com.example.data.AuthErrorMapper
 import com.example.data.AuthInputValidator
 import com.example.data.AuthMethod
+import com.example.data.AuthRateLimiter
 import com.example.data.AuthRepository
 import com.example.data.AuthSessionState
 import com.example.data.AuthUserProfile
+import com.example.data.EmailPasswordProviderDisabledException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,11 +25,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
-    val selectedMethod: AuthMethod = AuthMethod.EMAIL_PASSWORD,
+    val selectedMethod: AuthMethod = AuthMethod.GOOGLE,
     val isRegistrationMode: Boolean = false,
     val isLoading: Boolean = false,
     val isAutoSigningIn: Boolean = false,
     val isProfileUpdating: Boolean = false,
+    val isEmailProviderDisabled: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null
 )
@@ -38,6 +42,7 @@ class AuthViewModel(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
+    private val rateLimiter = AuthRateLimiter()
     private val _isCheckingInitialSession = MutableStateFlow(false)
     private var autoSignInAttempted = false
 
@@ -177,8 +182,47 @@ class AuthViewModel(
         }
     }
 
+    private fun handleEmailOrPhoneFailure(err: Throwable, fallbackMessage: String) {
+        val providerDisabled = err is EmailPasswordProviderDisabledException
+        if (!providerDisabled) {
+            rateLimiter.recordFailure()
+        }
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                isEmailProviderDisabled = it.isEmailProviderDisabled || providerDisabled,
+                errorMessage = err.message ?: fallbackMessage
+            )
+        }
+    }
+
+    private fun checkRateLimitBlocked(): Boolean {
+        val wait = rateLimiter.remainingCooldownSeconds()
+        if (wait <= 0) return false
+        _uiState.update {
+            it.copy(
+                errorMessage = "Trop de tentatives consécutives. Patientez ${wait}s avant de réessayer.",
+                infoMessage = null
+            )
+        }
+        return true
+    }
+
+    private fun shortCircuitIfEmailProviderDisabled(): Boolean {
+        if (!_uiState.value.isEmailProviderDisabled) return false
+        _uiState.update {
+            it.copy(
+                errorMessage = AuthErrorMapper.mapFirebaseErrorCode("ERROR_OPERATION_NOT_ALLOWED"),
+                infoMessage = null
+            )
+        }
+        return true
+    }
+
     fun signInWithEmail(email: String, password: String) {
         if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
+        if (checkRateLimitBlocked()) return
         AuthInputValidator.validateEmail(email)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
@@ -192,14 +236,9 @@ class AuthViewModel(
             val result = authRepository.signInWithEmailCredential(email, password)
             result.onSuccess { profile ->
                 _manualProfileOverride.value = profile
-                _uiState.update { it.copy(isLoading = false, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = err.message ?: "Échec de la connexion par e-mail."
-                    )
-                }
+                handleEmailOrPhoneFailure(err, "Échec de la connexion par e-mail.")
             }
         }
     }
@@ -212,6 +251,7 @@ class AuthViewModel(
         acceptedTerms: Boolean
     ) {
         if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
         val errors = AuthInputValidator.validateRegistration(
             fullName = fullName,
             email = email,
@@ -228,20 +268,16 @@ class AuthViewModel(
             val result = authRepository.registerWithEmailPassword(fullName, email, password)
             result.onSuccess { profile ->
                 _manualProfileOverride.value = profile
-                _uiState.update { it.copy(isLoading = false, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = err.message ?: "Impossible de créer le compte entreprise."
-                    )
-                }
+                handleEmailOrPhoneFailure(err, "Impossible de créer le compte entreprise.")
             }
         }
     }
 
     fun sendPasswordReset(email: String) {
         if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
         AuthInputValidator.validateEmail(email)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
@@ -258,18 +294,14 @@ class AuthViewModel(
                     )
                 }
             }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = err.message ?: "Impossible d'envoyer l'e-mail de réinitialisation."
-                    )
-                }
+                handleEmailOrPhoneFailure(err, "Impossible d'envoyer l'e-mail de réinitialisation.")
             }
         }
     }
 
     fun signInWithPhone(dialCode: String, localNumber: String, password: String) {
         if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
         AuthInputValidator.validatePhone(dialCode, localNumber)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
@@ -283,14 +315,9 @@ class AuthViewModel(
             val result = authRepository.signInWithPhonePassword(dialCode, localNumber, password)
             result.onSuccess { profile ->
                 _manualProfileOverride.value = profile
-                _uiState.update { it.copy(isLoading = false, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = err.message ?: "Échec de la connexion par numéro de téléphone."
-                    )
-                }
+                handleEmailOrPhoneFailure(err, "Échec de la connexion par numéro de téléphone.")
             }
         }
     }
@@ -304,6 +331,7 @@ class AuthViewModel(
         acceptedTerms: Boolean
     ) {
         if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
         val errors = AuthInputValidator.validatePhoneRegistration(
             fullName = fullName,
             dialCode = dialCode,
@@ -320,16 +348,94 @@ class AuthViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
             val result = authRepository.registerWithPhonePassword(fullName, dialCode, localNumber, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
-                _uiState.update { it.copy(isLoading = false, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = err.message ?: "Impossible de créer le compte avec ce numéro."
-                    )
-                }
+                handleEmailOrPhoneFailure(err, "Impossible de créer le compte avec ce numéro.")
             }
+        }
+    }
+
+    fun signInWithUsername(username: String, password: String) {
+        if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
+        if (checkRateLimitBlocked()) return
+        AuthInputValidator.validateUsername(username)?.let { err ->
+            _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
+            return
+        }
+        AuthInputValidator.validateSignInPassword(password)?.let { err ->
+            _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            val result = authRepository.signInWithUsernamePassword(username, password)
+            result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
+                _manualProfileOverride.value = profile
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
+            }.onFailure { err ->
+                handleEmailOrPhoneFailure(err, "Échec de la connexion par identifiant.")
+            }
+        }
+    }
+
+    fun registerWithUsername(
+        fullName: String,
+        username: String,
+        password: String,
+        confirmPassword: String,
+        acceptedTerms: Boolean
+    ) {
+        if (_uiState.value.isLoading) return
+        if (shortCircuitIfEmailProviderDisabled()) return
+        val errors = AuthInputValidator.validateUsernameRegistration(
+            fullName = fullName,
+            rawUsername = username,
+            password = password,
+            confirmPassword = confirmPassword,
+            acceptedTerms = acceptedTerms
+        )
+        if (errors.isNotEmpty()) {
+            _uiState.update { it.copy(errorMessage = errors.first(), infoMessage = null) }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            val result = authRepository.registerWithUsernamePassword(fullName, username, password)
+            result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
+                _manualProfileOverride.value = profile
+                _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
+            }.onFailure { err ->
+                handleEmailOrPhoneFailure(err, "Impossible de créer le compte avec cet identifiant.")
+            }
+        }
+    }
+
+    fun sendVerificationEmail() {
+        if (_uiState.value.isLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            authRepository.sendEmailVerification()
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            infoMessage = "E-mail de vérification envoyé. Vérifiez votre boîte de réception."
+                        )
+                    }
+                }
+                .onFailure { err ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = err.message ?: "Impossible d'envoyer l'e-mail de vérification."
+                        )
+                    }
+                }
         }
     }
 

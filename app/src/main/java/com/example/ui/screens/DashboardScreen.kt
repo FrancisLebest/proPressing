@@ -86,6 +86,7 @@ import com.example.data.RoleAuditEvent
 import com.example.data.RoleDashboardAnalytics
 import com.example.data.StockItem
 import com.example.data.WorkspaceRole
+import com.example.ui.components.GPAVibrantKpiTile
 import com.example.ui.components.ServiceDonutChart
 import com.example.ui.theme.AfricaGold
 import com.example.ui.theme.AmberContainer
@@ -93,6 +94,14 @@ import com.example.ui.theme.CrimsonContainer
 import com.example.ui.theme.CrimsonDanger
 import com.example.ui.theme.EmeraldContainer
 import com.example.ui.theme.EmeraldSuccess
+import com.example.ui.theme.KpiCoralEnd
+import com.example.ui.theme.KpiCoralStart
+import com.example.ui.theme.KpiGoldEnd
+import com.example.ui.theme.KpiGoldStart
+import com.example.ui.theme.KpiGreenEnd
+import com.example.ui.theme.KpiGreenStart
+import com.example.ui.theme.KpiVioletEnd
+import com.example.ui.theme.KpiVioletStart
 import com.example.ui.theme.MidnightNavy
 import com.example.ui.theme.PastelAmberTint
 import com.example.ui.theme.PastelAmberBorder
@@ -148,6 +157,7 @@ fun DashboardScreen(
             roleSession = roleSession,
             scopedOrders = orders,
             allTenantOrders = allTenantOrders,
+            clients = clients,
             transactions = transactions,
             claims = claims,
             auditLog = auditLog,
@@ -218,6 +228,7 @@ private fun DirecteurGeneralDashboard(
     roleSession: ActiveRoleSession,
     scopedOrders: List<PressingOrder>,
     allTenantOrders: List<PressingOrder>,
+    clients: List<ClientRecord>,
     transactions: List<AccountingEntry>,
     claims: List<ClaimRecord>,
     auditLog: List<RoleAuditEvent>,
@@ -373,6 +384,58 @@ private fun DirecteurGeneralDashboard(
                     }
                 }
             )
+        }
+
+        // Signature 2x2 Vibrant Mockup KPI Grid (Screen 5 — Gestion Pro Africa)
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    GPAVibrantKpiTile(
+                        title = "Commandes",
+                        value = "${filteredOrders.size}",
+                        icon = Icons.Rounded.Checkroom,
+                        startColor = KpiVioletStart,
+                        endColor = KpiVioletEnd,
+                        onClick = { onNavigateModule("orders") },
+                        modifier = Modifier.weight(1f).testTag("kpi_tile_orders")
+                    )
+                    GPAVibrantKpiTile(
+                        title = "Clients",
+                        value = "${clients.size}",
+                        icon = Icons.Rounded.Groups,
+                        startColor = KpiGreenStart,
+                        endColor = KpiGreenEnd,
+                        onClick = { onNavigateModule("clients") },
+                        modifier = Modifier.weight(1f).testTag("kpi_tile_clients")
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    GPAVibrantKpiTile(
+                        title = "Chiffre d'affaires",
+                        value = formatMoney(globalRevenue, currency),
+                        icon = Icons.Rounded.Payments,
+                        startColor = KpiGoldStart,
+                        endColor = KpiGoldEnd,
+                        onClick = { onNavigateModule("finance") },
+                        modifier = Modifier.weight(1f).testTag("kpi_tile_revenue")
+                    )
+                    GPAVibrantKpiTile(
+                        title = "Articles traités",
+                        value = "$totalPieces",
+                        icon = Icons.Rounded.LocalLaundryService,
+                        startColor = KpiCoralStart,
+                        endColor = KpiCoralEnd,
+                        onClick = { onNavigateModule("workshop_tracker") },
+                        modifier = Modifier.weight(1f).testTag("kpi_tile_articles")
+                    )
+                }
+            }
         }
 
         // Agency Selector + Dynamic Time Window Filter

@@ -1,0 +1,1514 @@
+# GESTION PRO AFRICA — PRESSING PRO MOBILE
+## Prompt maître de conception UI/UX et développement Android natif
+
+## 1. Mission générale
+
+Agis comme une équipe composée de :
+
+- Un architecte logiciel Android senior.
+- Un développeur Kotlin expert.
+- Un expert Jetpack Compose et Material Design 3.
+- Un designer UI/UX spécialisé dans les applications SaaS professionnelles.
+- Un architecte Firebase.
+- Un expert en cybersécurité et architecture multi-tenant.
+- Un ingénieur QA spécialisé dans les tests Android.
+- Un expert en optimisation des performances mobiles.
+
+Ta mission est de concevoir et développer intégralement une application Android native professionnelle, moderne, élégante, responsive, sécurisée et commercialisable pour la gestion des pressings, laveries et blanchisseries.
+
+Nom : GESTION PRO AFRICA.
+
+Module : PRESSING PRO.
+
+Slogan : La gestion professionnelle, simplement.
+
+Marché initial : Côte d'Ivoire, Afrique francophone, puis international.
+
+Langue principale : français.
+
+Devise initiale : FCFA (XOF).
+
+Utiliser la maquette graphique fournie comme référence principale. Reproduire fidèlement son identité visuelle tout en améliorant son ergonomie, sa lisibilité et son accessibilité.
+
+Ne pas créer uniquement des maquettes statiques. Développer les véritables écrans, composants, fonctionnalités, navigations, formulaires, animations et connexions aux données.
+
+## 2. Stack technique obligatoire
+
+### Application Android
+
+- Kotlin natif.
+- Jetpack Compose.
+- Material Design 3.
+- Gradle Kotlin DSL.
+- Navigation Compose.
+- Kotlin Coroutines.
+- Kotlin Flow et StateFlow.
+- ViewModel.
+- Hilt pour l'injection de dépendances.
+- Coil pour les images.
+- Room pour les données locales lorsque nécessaire.
+- DataStore pour les préférences.
+- WorkManager pour les tâches différées.
+- CameraX pour les photographies.
+- ML Kit pour la lecture des codes QR et codes-barres.
+- Architecture Clean Architecture + MVVM.
+
+Utiliser des versions stables et mutuellement compatibles des dépendances.
+
+Ne pas utiliser Flutter, React Native ou une WebView pour reproduire les interfaces principales.
+
+### Firebase
+
+Utiliser :
+
+- Firebase Authentication.
+- Cloud Firestore.
+- Cloud Storage for Firebase.
+- Cloud Functions.
+- Firebase Cloud Messaging.
+- Firebase App Check.
+- Firebase Crashlytics.
+- Firebase Analytics.
+- Firebase Performance Monitoring.
+- Firebase Remote Config.
+- Firebase Emulator Suite.
+
+Utiliser Firebase BoM pour gérer les versions des bibliothèques Firebase compatibles.
+
+Ne jamais intégrer les clés privées des comptes de service Firebase dans l'application Android.
+
+### Compatibilité avec le SaaS web existant
+
+Si le SaaS Django possède déjà une base de données et des API fonctionnelles, ne pas créer une deuxième base métier indépendante.
+
+Auditer l'existant et définir une source de vérité unique.
+
+Dans ce cas :
+
+- Utiliser les API Django sécurisées pour les opérations métier existantes.
+- Utiliser Firebase pour les services mobiles appropriés.
+- Synchroniser les identités et les autorisations côté serveur.
+- Éviter les doubles écritures et les incohérences comptables.
+
+Si Firebase devient le backend principal, prévoir une migration et une stratégie de synchronisation documentées avant toute modification du SaaS web.
+
+## 3. Identité graphique officielle
+
+Respecter les couleurs des maquettes GESTION PRO AFRICA.
+
+### Palette principale
+
+- Bleu nuit : #101D3A
+- Bleu profond : #061A46
+- Bleu royal : #2563EB
+- Bleu vif : #0758F9
+- Or : #F0B429
+- Jaune accent : #FFBF19
+- Blanc : #FFFFFF
+- Fond clair : #F8FAFC
+- Texte principal : #0F172A
+- Texte secondaire : #64748B
+- Vert succès : #16A34A
+- Rouge erreur : #DC2626
+- Orange avertissement : #F59E0B
+- Violet analytique : #7C3AED
+- Bordures : #E2E8F0
+
+Créer un thème Material 3 personnalisé.
+
+Prévoir :
+
+- Mode clair.
+- Mode sombre.
+- Mode automatique selon le système.
+- Couleurs sémantiques.
+- Dégradés maîtrisés.
+- Contrastes accessibles.
+- Styles réutilisables.
+
+### Typographie
+
+S'inspirer des polices du site :
+
+https://grainesdereussite.lovable.app/
+
+Identifier la famille exacte à partir des ressources CSS publiques si possible.
+
+Si elle ne peut pas être identifiée, utiliser Inter ou Poppins comme alternative.
+
+Utiliser uniquement des polices dont la licence autorise l'intégration dans une application commerciale.
+
+Hiérarchie :
+
+- Grand titre : 28–32 sp.
+- Titre d'écran : 22–26 sp.
+- Sous-titre : 18–20 sp.
+- Titre de carte : 16–18 sp.
+- Texte courant : 14–16 sp.
+- Texte secondaire : 12–14 sp.
+- Indicateurs financiers : 24–32 sp.
+
+Respecter les réglages de taille de police Android.
+
+### Icônes
+
+Utiliser des icônes professionnelles provenant notamment de :
+
+https://www.flaticon.com/fr/icones-gratuites/professionnel
+
+Respecter les licences et les obligations d'attribution.
+
+Prévoir des icônes pour :
+
+- Pressing.
+- Laverie.
+- Blanchisserie.
+- Vêtements.
+- Machines à laver.
+- Repassage.
+- Clients.
+- Commandes.
+- Paiements.
+- Caisse.
+- Factures.
+- Stocks.
+- Livraisons.
+- Personnel.
+- Comptabilité.
+- Notifications.
+- Sécurité.
+- Paramètres.
+
+Convertir les ressources vectorielles compatibles en VectorDrawable Android.
+
+Ne pas utiliser d'émojis comme remplacement systématique des icônes professionnelles.
+
+## 4. Logo et images
+
+Réutiliser le logo GESTION PRO AFRICA fourni.
+
+Conserver :
+
+- La silhouette du continent africain.
+- Le graphique de croissance.
+- La flèche ascendante.
+- Les couleurs bleu nuit et or.
+- La mention GESTION PRO AFRICA.
+- La déclinaison Pressing Pro.
+
+Préparer :
+
+- Logo principal.
+- Logo horizontal.
+- Logo blanc.
+- Logo monochrome.
+- Icône adaptative Android.
+- Icône monochrome Android.
+- Image de démarrage.
+- Visuels onboarding.
+- Illustrations des états vides.
+
+Créer ou intégrer des photographies professionnelles :
+
+- Employée africaine en uniforme Pressing Pro.
+- Employé de blanchisserie.
+- Machines à laver professionnelles.
+- Chemises suspendues.
+- Serviettes pliées.
+- Fer à repasser professionnel.
+- Atelier de pressing.
+- Collecte et livraison.
+- Vêtements propres emballés.
+- Comptoir de réception.
+
+Les photographies doivent être originales ou correctement licenciées, optimisées et sans filigrane.
+
+Ne jamais inventer des chemins vers des ressources inexistantes.
+
+## 5. Design System mobile
+
+Créer une bibliothèque de composants Jetpack Compose réutilisables.
+
+Composants attendus :
+
+- GPAButton.
+- GPAOutlinedButton.
+- GPAIconButton.
+- GPATextField.
+- GPAPasswordField.
+- GPAPhoneField.
+- GPASearchBar.
+- GPADropdown.
+- GPADatePicker.
+- GPATimePicker.
+- GPACheckbox.
+- GPASwitch.
+- GPACard.
+- GPAStatCard.
+- GPAOrderCard.
+- GPACustomerCard.
+- GPAProductCard.
+- GPAEmployeeCard.
+- GPAStatusChip.
+- GPAFilterChip.
+- GPABottomNavigation.
+- GPANavigationDrawer.
+- GPANavigationRail.
+- GPATopAppBar.
+- GPAFloatingActionButton.
+- GPADialog.
+- GPABottomSheet.
+- GPASnackbar.
+- GPALoadingIndicator.
+- GPASkeletonLoader.
+- GPAEmptyState.
+- GPAErrorState.
+- GPAOfflineBanner.
+- GPAConfirmationDialog.
+- GPAPermissionDenied.
+- GPAChart.
+- GPATimeline.
+- GPAStepper.
+- GPAImagePicker.
+- GPAPaymentSelector.
+- GPAQRCodeScanner.
+- GPAReceiptPreview.
+
+Utiliser une grille d'espacement cohérente :
+
+4, 8, 12, 16, 20, 24, 32 et 48 dp.
+
+Rayons des composants :
+
+- Champs : 12 dp.
+- Boutons : 14 dp.
+- Cartes : 16 dp.
+- Dialogues : 24 dp.
+- Grandes surfaces : 28 dp.
+
+Les zones tactiles doivent mesurer au minimum 48 dp.
+
+## 6. Responsive et interfaces adaptatives
+
+L'application doit fonctionner sur :
+
+- Smartphones Android compacts.
+- Smartphones standards.
+- Smartphones grand écran.
+- Tablettes 7 pouces.
+- Tablettes 10 pouces.
+- Appareils pliables.
+- Mode portrait.
+- Mode paysage.
+- Mode multifenêtre Android.
+
+Utiliser les Window Size Classes et les composants adaptatifs Jetpack Compose.
+
+### Écran compact
+
+- Une colonne.
+- Navigation inférieure.
+- Formulaires verticaux.
+- Cartes empilées.
+- Boutons accessibles au pouce.
+- Bottom sheets pour les actions secondaires.
+
+### Écran moyen
+
+- Deux colonnes lorsque pertinent.
+- Cartes statistiques en grille.
+- Formulaires mieux répartis.
+- NavigationRail lorsque nécessaire.
+
+### Écran étendu
+
+- Menu latéral permanent.
+- Tableaux de bord multicolonnes.
+- Liste et détail simultanés.
+- Formulaires à deux colonnes.
+- Graphiques plus détaillés.
+
+Ne jamais utiliser de dimensions fixes empêchant l'adaptation.
+
+Respecter les insets système, la barre de navigation, les découpes d'écran et le clavier.
+
+## 7. Navigation principale
+
+Créer une navigation dynamique selon les rôles.
+
+Navigation inférieure Admin Pressing :
+
+- Accueil.
+- Commandes.
+- Nouvelle commande.
+- Clients.
+- Plus.
+
+Navigation Gestionnaire :
+
+- Accueil.
+- Commandes.
+- Tâches.
+- Notifications.
+- Profil.
+
+Navigation Super-Admin :
+
+- Accueil.
+- Entreprises.
+- Abonnements.
+- Support.
+- Plus.
+
+Les menus doivent être générés selon les permissions effectives.
+
+Gérer :
+
+- Navigation arrière Android.
+- Deep links.
+- Ouverture d'une commande depuis une notification.
+- Conservation de l'état des écrans.
+- Restauration après interruption.
+- Redirection après authentification.
+- Changement d'entreprise.
+- Changement d'agence.
+
+## 8. Catalogue complet des écrans
+
+Développer tous les écrans suivants, avec leurs composants, états, validations, navigations et connexions aux données.
+
+### MODULE A — Démarrage et onboarding
+
+1. Écran de démarrage avec logo.
+2. Écran de chargement initial.
+3. Présentation générale de l'application.
+4. Présentation de la gestion des commandes.
+5. Présentation du suivi des clients.
+6. Présentation de la caisse et des finances.
+7. Présentation des livraisons.
+8. Présentation des notifications.
+9. Sélection de la langue.
+10. Sélection du pays.
+11. Écran de bienvenue.
+12. Présentation des avantages.
+13. Autorisation des notifications.
+14. Écran de mise à jour disponible.
+15. Écran de maintenance.
+
+Prévoir des transitions fluides, sans imposer un délai artificiel au démarrage.
+
+### MODULE B — Authentification
+
+16. Connexion par e-mail.
+17. Connexion par numéro de téléphone.
+18. Connexion par login.
+19. Vérification OTP lorsque nécessaire.
+20. Mot de passe oublié.
+21. Réinitialisation du mot de passe.
+22. Vérification de l'adresse e-mail.
+23. Vérification du téléphone.
+24. Authentification multifacteur.
+25. Session expirée.
+26. Compte suspendu.
+27. Compte non vérifié.
+28. Sélection d'entreprise.
+29. Sélection d'agence.
+30. Confirmation de déconnexion.
+
+Reproduire la maquette de connexion avec :
+
+- Logo.
+- Visuel professionnel.
+- Onglets E-mail, Téléphone et Login.
+- Champ d'identification dynamique.
+- Mot de passe.
+- Afficher ou masquer le mot de passe.
+- Bouton Se connecter.
+- Mot de passe oublié.
+- Créer un compte entreprise.
+
+Firebase Authentication prend en charge nativement certaines méthodes, notamment e-mail/mot de passe et téléphone par OTP.
+
+Pour le login personnalisé ou téléphone/mot de passe, mettre en place un mécanisme serveur sécurisé et compatible avec Firebase Custom Authentication ou le backend existant.
+
+Ne jamais exposer publiquement une collection permettant de retrouver les e-mails à partir des logins ou numéros de téléphone.
+
+### MODULE C — Inscription entreprise
+
+31. Choix du type d'entreprise.
+32. Informations générales de l'entreprise.
+33. Choix du secteur d'activité.
+34. Sélection du pays et de la ville.
+35. Adresse et géolocalisation.
+36. Informations de l'administrateur.
+37. Création du login.
+38. Création du mot de passe.
+39. Confirmation du mot de passe.
+40. Acceptation des conditions.
+41. Vérification du compte.
+42. Choix de l'abonnement.
+43. Activation de la période d'essai.
+44. Création de la première agence.
+45. Importation du logo entreprise.
+46. Configuration des horaires.
+47. Configuration des services.
+48. Configuration initiale des tarifs.
+49. Récapitulatif de l'inscription.
+50. Confirmation de création du compte.
+
+Utiliser un assistant multi-étapes avec barre de progression.
+
+La création de l'organisation et de son propriétaire doit être effectuée par un processus serveur sécurisé, idempotent et capable de reprendre après un échec.
+
+### MODULE D — Tableau de bord Admin Pressing
+
+51. Tableau de bord principal.
+52. Vue des statistiques du jour.
+53. Vue hebdomadaire.
+54. Vue mensuelle.
+55. Vue annuelle.
+56. Comparaison des périodes.
+57. Vue des performances par agence.
+58. Vue des commandes en retard.
+59. Vue des commandes prêtes.
+60. Centre d'alertes.
+61. Actions rapides.
+62. Activités récentes.
+
+Afficher :
+
+- Nombre de commandes.
+- Clients.
+- Chiffre d'affaires.
+- Paiements reçus.
+- Articles traités.
+- Créances.
+- Dépenses.
+- Bénéfices selon les données comptables.
+- Graphiques.
+- Flux de production.
+- Alertes de stock.
+- Échéance d'abonnement.
+
+Les statistiques doivent provenir des données réelles et respecter les permissions.
+
+### MODULE E — Commandes
+
+63. Liste des commandes.
+64. Recherche de commande.
+65. Filtres avancés.
+66. Nouvelle commande.
+67. Sélection du client.
+68. Création rapide d'un client.
+69. Sélection des vêtements.
+70. Sélection des prestations.
+71. Saisie des quantités.
+72. Commande au kilogramme.
+73. Commande à la pièce.
+74. Sélection du délai.
+75. Commande express.
+76. Photographie avant traitement.
+77. Enregistrement des défauts.
+78. Enregistrement des taches.
+79. Observations.
+80. Application d'une remise.
+81. Récapitulatif de commande.
+82. Paiement initial.
+83. Confirmation de commande.
+84. Détails d'une commande.
+85. Modification autorisée.
+86. Historique de commande.
+87. Demande d'annulation.
+88. Confirmation d'annulation.
+89. Commandes archivées.
+90. Commandes en retard.
+91. Commandes non récupérées.
+92. Commandes prêtes.
+93. Commandes livrées.
+94. Réclamations.
+95. Étiquette QR.
+96. Scanner de commande.
+97. Reçu de dépôt.
+98. Partage du reçu.
+99. Impression du reçu.
+100. Confirmation de restitution.
+
+### Design du formulaire nouvelle commande
+
+Créer un formulaire ergonomique en cinq étapes :
+
+Étape 1 : client.
+
+Étape 2 : vêtements et prestations.
+
+Étape 3 : photos, défauts et observations.
+
+Étape 4 : délai, priorité et livraison.
+
+Étape 5 : récapitulatif et paiement.
+
+Afficher un récapitulatif financier dynamique :
+
+- Sous-total.
+- Quantité.
+- Remise.
+- Frais express.
+- Frais de livraison.
+- Taxes applicables.
+- Total.
+- Montant payé.
+- Reste à payer.
+
+Les calculs affichés côté mobile doivent être vérifiés et recalculés côté serveur.
+
+### MODULE F — Atelier et production
+
+101. Tableau de production.
+102. Vue Kanban.
+103. Liste des tâches.
+104. Mes tâches assignées.
+105. Réception des articles.
+106. Tri des vêtements.
+107. Lavage.
+108. Nettoyage à sec.
+109. Détachage.
+110. Séchage.
+111. Repassage.
+112. Emballage.
+113. Contrôle qualité.
+114. Photographie après traitement.
+115. Validation de conformité.
+116. Demande de reprise.
+117. Affectation des employés.
+118. Historique des traitements.
+119. Suivi des délais.
+120. Articles perdus ou endommagés.
+121. Commandes prêtes pour restitution.
+122. Scan QR atelier.
+
+Créer une timeline visuelle du traitement.
+
+Les transitions de statut doivent respecter une machine à états contrôlée côté serveur.
+
+Interdire le passage à un état incompatible sans autorisation.
+
+### MODULE G — Clients et fidélité
+
+123. Liste des clients.
+124. Recherche de client.
+125. Nouveau client.
+126. Profil client.
+127. Modification du client.
+128. Historique des commandes.
+129. Historique des paiements.
+130. Créances du client.
+131. Points de fidélité.
+132. Récompenses.
+133. Clients VIP.
+134. Catégories de clients.
+135. Réclamations clients.
+136. Notifications clients.
+137. Consentements.
+138. Archivage client.
+
+### MODULE H — Articles, prestations et tarifs
+
+139. Catalogue des vêtements.
+140. Catégories.
+141. Création d'article.
+142. Modification d'article.
+143. Catalogue des prestations.
+144. Création de prestation.
+145. Tarification à la pièce.
+146. Tarification au kilogramme.
+147. Tarification express.
+148. Tarifs par agence.
+149. Promotions.
+150. Remises.
+151. Historique des tarifs.
+152. Services archivés.
+
+Afficher les photographies ou illustrations des vêtements.
+
+### MODULE I — Caisse et paiements
+
+153. Tableau de bord caisse.
+154. Ouverture de caisse.
+155. Encaissement.
+156. Paiement en espèces.
+157. Paiement Wave.
+158. Paiement Orange Money.
+159. Paiement MTN Money.
+160. Paiement Moov Money.
+161. Paiement bancaire.
+162. Paiement partiel.
+163. Paiement mixte.
+164. Paiement différé.
+165. Historique des transactions.
+166. Détail de transaction.
+167. Vérification de paiement.
+168. Paiement en attente.
+169. Paiement réussi.
+170. Paiement échoué.
+171. Demande de remboursement.
+172. Validation du remboursement.
+173. Décaissement.
+174. Transfert de caisse.
+175. Fermeture de caisse.
+176. Écart de caisse.
+177. Rapport de caisse.
+178. Historique des sessions.
+
+Utiliser une passerelle de paiement réellement disponible et configurée.
+
+Ne jamais considérer un paiement comme réussi sur la seule base d'une réponse du téléphone.
+
+La confirmation doit provenir du serveur et de la vérification du prestataire.
+
+### MODULE J — Facturation
+
+179. Liste des factures.
+180. Création de facture.
+181. Détails de facture.
+182. Aperçu PDF.
+183. Impression.
+184. Partage WhatsApp.
+185. Envoi par e-mail.
+186. Factures impayées.
+187. Factures partiellement payées.
+188. Factures réglées.
+189. Avoirs.
+190. Historique des reçus.
+
+Prévoir l'impression via les mécanismes Android et, lorsque compatible, les imprimantes thermiques Bluetooth.
+
+### MODULE K — Stocks et fournisseurs
+
+191. Tableau de bord stock.
+192. Liste des produits.
+193. Nouveau produit.
+194. Détail produit.
+195. Entrée de stock.
+196. Sortie de stock.
+197. Transfert de stock.
+198. Inventaire.
+199. Ajustement de stock.
+200. Historique des mouvements.
+201. Alertes de stock faible.
+202. Produits épuisés.
+203. Liste des fournisseurs.
+204. Nouveau fournisseur.
+205. Fiche fournisseur.
+206. Commandes fournisseurs.
+207. Réception des achats.
+208. Historique des achats.
+
+### MODULE L — Livraisons
+
+209. Tableau de bord livraison.
+210. Liste des livraisons.
+211. Nouvelle livraison.
+212. Planification de collecte.
+213. Planification de restitution.
+214. Sélection de l'adresse.
+215. Carte de localisation.
+216. Affectation du livreur.
+217. Livraisons assignées.
+218. Détail de livraison.
+219. Suivi de livraison.
+220. Preuve de livraison.
+221. Signature du client.
+222. Confirmation par code.
+223. Incident de livraison.
+224. Livraison échouée.
+225. Historique des livraisons.
+226. Configuration des zones et frais.
+
+Ne demander la géolocalisation que lorsqu'elle est nécessaire et avec le consentement de l'utilisateur.
+
+### MODULE M — Personnel
+
+227. Liste des employés.
+228. Création d'employé.
+229. Profil employé.
+230. Modification.
+231. Affectation à une agence.
+232. Planning.
+233. Présences.
+234. Absences.
+235. Congés.
+236. Performances.
+237. Tâches assignées.
+238. Commissions.
+239. Salaires.
+240. Historique du personnel.
+
+### MODULE N — Comptabilité
+
+241. Tableau de bord financier.
+242. Recettes.
+243. Dépenses.
+244. Nouvelle dépense.
+245. Catégories de dépenses.
+246. Créances.
+247. Dettes.
+248. Journaux comptables.
+249. Écritures comptables.
+250. Grand livre.
+251. Balance générale.
+252. Compte de résultat.
+253. Bilan.
+254. Trésorerie.
+255. Rapprochement des paiements.
+256. Périodes comptables.
+257. Clôture comptable.
+258. Exportation des états financiers.
+
+La comptabilité doit être fondée sur des écritures équilibrées et des règles métier validées.
+
+Adapter les états financiers au référentiel SYSCOHADA lorsque applicable.
+
+Ne pas effectuer les opérations comptables critiques uniquement sur le téléphone.
+
+### MODULE O — Rapports et statistiques
+
+259. Tableau de bord analytique.
+260. Rapport des commandes.
+261. Rapport des ventes.
+262. Rapport des paiements.
+263. Rapport des dépenses.
+264. Rapport des bénéfices.
+265. Rapport des clients.
+266. Rapport des prestations.
+267. Rapport des employés.
+268. Rapport des stocks.
+269. Rapport des livraisons.
+270. Rapport par agence.
+271. Comparaison des périodes.
+272. Exportation PDF.
+273. Exportation Excel.
+274. Partage des rapports.
+
+Créer des graphiques interactifs et accessibles.
+
+### MODULE P — Rôles et permissions
+
+275. Liste des utilisateurs.
+276. Création d'un gestionnaire.
+277. Invitation d'un utilisateur.
+278. Profil utilisateur.
+279. Attribution du rôle.
+280. Attribution des agences.
+281. Matrice des permissions.
+282. Permissions personnalisées.
+283. Profils de permissions.
+284. Restrictions financières.
+285. Horaires d'accès.
+286. Permissions temporaires.
+287. Demandes de validation.
+288. Détail d'une demande.
+289. Approbation.
+290. Rejet.
+291. Historique des autorisations.
+292. Sessions actives.
+293. Révocation des sessions.
+294. Journaux d'audit.
+
+### MODULE Q — Gestionnaire Pressing
+
+295. Tableau de bord gestionnaire.
+296. Mes commandes.
+297. Mes tâches.
+298. Mes clients autorisés.
+299. Ma caisse.
+300. Mes encaissements.
+301. Mes livraisons.
+302. Mes demandes de validation.
+303. Mes performances.
+304. Mon historique.
+305. Mes notifications.
+306. Mon profil.
+
+Les écrans du gestionnaire doivent respecter strictement ses permissions.
+
+Ne pas afficher les bénéfices, salaires, données bancaires et statistiques confidentielles sans autorisation explicite.
+
+### MODULE R — Super-Administration SaaS
+
+307. Tableau de bord global.
+308. Liste des entreprises.
+309. Détail entreprise.
+310. Création entreprise.
+311. Validation entreprise.
+312. Suspension entreprise.
+313. Réactivation entreprise.
+314. Gestion des utilisateurs globaux.
+315. Gestion des abonnements.
+316. Gestion des forfaits.
+317. Création de forfait.
+318. Modification de forfait.
+319. Modules métiers.
+320. Activation des modules.
+321. Revenus SaaS.
+322. Transactions SaaS.
+323. Factures d'abonnement.
+324. Entreprises par pays.
+325. Statistiques globales.
+326. Tickets d'assistance.
+327. Détail ticket.
+328. Réponse au ticket.
+329. Notifications globales.
+330. Journaux de sécurité.
+331. Supervision des services.
+332. Gestion des sauvegardes.
+333. Paramètres plateforme.
+334. Gestion des accès d'assistance.
+
+Le Super-Admin ne doit pas disposer automatiquement d'un accès aux données commerciales confidentielles des entreprises.
+
+### MODULE S — Abonnements
+
+335. Abonnement actuel.
+336. Liste des forfaits.
+337. Comparaison des forfaits.
+338. Modules disponibles.
+339. Achat de module.
+340. Changement de forfait.
+341. Renouvellement.
+342. Paiement d'abonnement.
+343. Historique des abonnements.
+344. Factures SaaS.
+345. Quotas.
+346. Abonnement expiré.
+347. Période d'essai.
+
+### MODULE T — Portail client
+
+348. Accueil client.
+349. Catalogue des services.
+350. Demande de collecte.
+351. Nouvelle commande en ligne.
+352. Panier.
+353. Adresse de livraison.
+354. Paiement.
+355. Confirmation de commande.
+356. Suivi de commande.
+357. Historique.
+358. Factures et reçus.
+359. Fidélité.
+360. Réclamations.
+361. Évaluation du service.
+362. Profil client.
+
+Le portail client doit disposer d'un périmètre d'accès distinct des trois rôles administratifs.
+
+### MODULE U — Profil et paramètres
+
+363. Mon profil.
+364. Modifier mon profil.
+365. Changer la photo.
+366. Changer le mot de passe.
+367. Modifier le téléphone.
+368. Modifier l'e-mail.
+369. Sécurité du compte.
+370. Authentification multifacteur.
+371. Appareils connectés.
+372. Paramètres de notifications.
+373. Choix du thème.
+374. Choix de la langue.
+375. Paramètres entreprise.
+376. Gestion du logo.
+377. Gestion des agences.
+378. Horaires.
+379. Configuration des reçus.
+380. Configuration des taxes.
+381. Configuration des devises.
+382. Paramètres de livraison.
+383. Conditions d'utilisation.
+384. Politique de confidentialité.
+385. À propos.
+386. Centre d'aide.
+387. FAQ.
+388. Contacter le support.
+389. Demande d'exportation des données.
+390. Demande de suppression du compte.
+
+### MODULE V — Notifications et états système
+
+391. Centre de notifications.
+392. Détail notification.
+393. Notifications non lues.
+394. Préférences.
+395. Écran hors connexion.
+396. Erreur réseau.
+397. Accès interdit.
+398. Ressource introuvable.
+399. Module non activé.
+400. Synchronisation en attente.
+401. Conflit de synchronisation.
+402. Confirmation d'opération.
+403. Erreur inattendue.
+404. Autorisation Android refusée.
+405. Stockage indisponible.
+
+Les 405 écrans et états recensés constituent un catalogue fonctionnel. Mutualiser les composants et destinations lorsque pertinent, sans créer artificiellement des centaines de fichiers identiques.
+
+## 9. Gestion stricte des rôles
+
+Implémenter les trois rôles système :
+
+SUPER_ADMIN.
+
+PRESSING_ADMIN.
+
+PRESSING_MANAGER.
+
+Créer également un périmètre client distinct pour le portail client.
+
+Utiliser un système RBAC + ABAC.
+
+Chaque autorisation dépend :
+
+- Du rôle.
+- De l'entreprise.
+- De l'agence.
+- Du module actif.
+- De l'abonnement.
+- Des permissions individuelles.
+- Des restrictions financières.
+- Du statut de la ressource.
+- Des validations requises.
+
+Appliquer DENY BY DEFAULT.
+
+Le gestionnaire ne doit jamais modifier ses propres permissions.
+
+Le contrôle des permissions doit être appliqué côté serveur, dans les règles Firebase et dans les API métier.
+
+Les interfaces masquées ne constituent pas un mécanisme de sécurité.
+
+## 10. Architecture Firebase multi-tenant
+
+Si Firestore est retenu comme source principale, organiser les données selon les domaines suivants :
+
+- users
+- platformRoles
+- organizations
+- plans
+- modules
+- subscriptions
+- platformPayments
+- supportTickets
+
+Sous chaque organisation, prévoir notamment :
+
+- memberships
+- branches
+- permissionProfiles
+- permissionOverrides
+- customers
+- orders
+- garments
+- services
+- pricing
+- productionTasks
+- payments
+- cashSessions
+- cashMovements
+- invoices
+- expenses
+- inventory
+- stockMovements
+- suppliers
+- employees
+- deliveries
+- accountingEntries
+- approvalRequests
+- notifications
+- auditLogs
+- settings
+
+Chaque document métier doit avoir un rattachement organisationnel vérifiable.
+
+Utiliser des identifiants stables, des timestamps serveur et des index Firestore adaptés.
+
+Pour les montants XOF, utiliser des entiers représentant les unités monétaires afin d'éviter les erreurs d'arrondi.
+
+Prévoir des transactions atomiques, des clés d'idempotence et des mécanismes de rapprochement.
+
+Ne pas stocker des listes illimitées dans un document Firestore.
+
+## 11. Firebase Security Rules
+
+Écrire et tester des règles strictes pour :
+
+- Cloud Firestore.
+- Cloud Storage.
+- Accès aux photographies.
+- Accès aux documents.
+- Accès aux commandes.
+- Accès aux clients.
+- Accès aux agences.
+- Accès aux profils.
+
+Vérifier les appartenances actives.
+
+Interdire les lectures et écritures inter-entreprises.
+
+Interdire toute modification cliente des rôles système, des abonnements et des autorisations privilégiées.
+
+Utiliser les Custom Claims pour les attributs globaux appropriés, sans y stocker l'intégralité des permissions dynamiques.
+
+Les opérations sensibles doivent être réalisées par Cloud Functions ou les API Django autorisées.
+
+Tester les règles avec Firebase Emulator Suite.
+
+## 12. Cloud Functions et logique métier
+
+Développer les fonctions serveur nécessaires :
+
+- Création d'entreprise.
+- Création du propriétaire.
+- Invitation d'utilisateur.
+- Attribution des permissions.
+- Révocation des permissions.
+- Création de commande.
+- Génération du numéro de commande.
+- Calcul des tarifs.
+- Validation des remises.
+- Mise à jour des traitements.
+- Encaissement.
+- Vérification des paiements.
+- Traitement des webhooks.
+- Remboursement.
+- Génération des factures.
+- Écritures comptables.
+- Mouvements de stock.
+- Validation des demandes.
+- Gestion des abonnements.
+- Notifications.
+- Rapports.
+- Journalisation.
+
+Vérifier l'authentification et les permissions dans chaque fonction.
+
+Ne pas faire confiance aux montants, rôles ou identifiants d'entreprise fournis par le téléphone.
+
+## 13. Mode hors connexion
+
+Adapter l'application aux connexions Internet instables.
+
+Prévoir :
+
+- Cache local.
+- Consultation des données déjà synchronisées.
+- Brouillons de commandes.
+- Indicateur hors connexion.
+- Indicateur de synchronisation.
+- Reprise automatique.
+- Gestion des conflits.
+- File d'attente des opérations autorisées.
+- Protection contre les doublons.
+
+Les opérations financières sensibles, les changements de permissions et les validations nécessitant le serveur ne doivent pas être confirmés définitivement hors connexion.
+
+Isoler les données locales par utilisateur et entreprise.
+
+Protéger les données sensibles et purger les caches appropriés lors de la déconnexion ou du changement de compte.
+
+## 14. Animations et micro-interactions
+
+Utiliser les API d'animation Jetpack Compose.
+
+Prévoir :
+
+- Animation du logo.
+- Transitions entre écrans.
+- Apparition progressive des cartes.
+- Animation des indicateurs.
+- Animation des graphiques.
+- Skeleton loaders.
+- Pull-to-refresh.
+- Swipe actions autorisées.
+- Bottom sheets.
+- Feedback tactile.
+- Animation de succès.
+- Animation de chargement.
+- Animation de changement de statut.
+
+Utiliser des animations discrètes, rapides et utiles.
+
+Respecter les préférences système de réduction des animations.
+
+## 15. Formulaires et validations
+
+Chaque formulaire doit comporter :
+
+- Libellés clairs.
+- Icônes pertinentes.
+- Champs obligatoires identifiés.
+- Validation en temps réel.
+- Validation serveur.
+- Messages d'erreur.
+- Gestion du clavier.
+- Navigation entre champs.
+- Sauvegarde de brouillon lorsque pertinent.
+- Bouton désactivé pendant l'envoi.
+- Protection contre les soumissions multiples.
+- Confirmation de réussite.
+- Gestion des erreurs réseau.
+
+Ne jamais perdre silencieusement les informations saisies.
+
+## 16. Notifications Firebase
+
+Implémenter Firebase Cloud Messaging pour :
+
+- Nouvelle commande.
+- Commande prête.
+- Commande en retard.
+- Paiement confirmé.
+- Livraison planifiée.
+- Livraison terminée.
+- Stock faible.
+- Demande de validation.
+- Réponse administrative.
+- Abonnement expirant.
+- Ticket d'assistance.
+- Alerte de sécurité.
+
+Gérer les notifications selon les permissions et les préférences.
+
+Éviter les informations financières ou personnelles sensibles dans les notifications visibles sur un écran verrouillé.
+
+## 17. Architecture du projet Android
+
+Créer une architecture modulaire.
+
+app/
+
+core/
+- design-system
+- common
+- model
+- network
+- database
+- firebase
+- security
+- navigation
+- testing
+
+feature/
+- splash
+- onboarding
+- authentication
+- registration
+- dashboard
+- organizations
+- branches
+- orders
+- garments
+- production
+- customers
+- pricing
+- payments
+- cash
+- invoices
+- inventory
+- suppliers
+- delivery
+- employees
+- accounting
+- reports
+- permissions
+- approvals
+- manager
+- superadmin
+- subscriptions
+- customerportal
+- notifications
+- settings
+- support
+
+backend/
+- firebase-functions
+- firestore-rules
+- storage-rules
+- firestore-indexes
+- emulator-tests
+
+docs/
+- architecture
+- ui-ux
+- security
+- database
+- api
+- deployment
+
+Chaque module doit respecter la séparation entre présentation, domaine et données.
+
+## 18. États des interfaces
+
+Chaque écran doit prendre en charge les états pertinents :
+
+- Initial.
+- Chargement.
+- Succès.
+- Vide.
+- Erreur.
+- Hors connexion.
+- Accès refusé.
+- Synchronisation.
+- Données obsolètes.
+- Session expirée.
+
+Utiliser des classes d'état UI explicites.
+
+Ne jamais afficher un écran blanc sans explication.
+
+## 19. Accessibilité
+
+Respecter :
+
+- TalkBack.
+- Contrastes suffisants.
+- Descriptions des images.
+- Ordre de navigation logique.
+- Taille de texte adaptable.
+- Zones tactiles de 48 dp minimum.
+- Libellés accessibles.
+- Messages d'erreur compréhensibles.
+- Navigation au clavier lorsque disponible.
+
+Ne jamais transmettre un statut uniquement par la couleur.
+
+## 20. Tests obligatoires
+
+Développer :
+
+- Tests unitaires Kotlin.
+- Tests des ViewModels.
+- Tests des repositories.
+- Tests des cas d'utilisation.
+- Tests Jetpack Compose UI.
+- Tests de navigation.
+- Tests Firebase Emulator.
+- Tests des règles de sécurité.
+- Tests multi-tenant.
+- Tests des permissions.
+- Tests des calculs financiers.
+- Tests des paiements.
+- Tests de synchronisation.
+- Tests de concurrence.
+- Tests hors connexion.
+- Tests de restauration d'état.
+- Tests responsive.
+
+Créer au minimum deux entreprises de test, plusieurs agences et plusieurs utilisateurs de rôles différents.
+
+Vérifier les interfaces sur plusieurs tailles d'écran et orientations.
+
+Tester les parcours complets :
+
+1. Inscription d'une entreprise.
+2. Création d'un gestionnaire.
+3. Enregistrement d'une commande.
+4. Photographie des vêtements.
+5. Traitement atelier.
+6. Encaissement.
+7. Génération du reçu.
+8. Livraison.
+9. Comptabilisation.
+10. Consultation des rapports.
+
+## 21. Jetpack Compose Preview
+
+Créer des previews pour tous les composants et écrans principaux.
+
+Prévoir :
+
+- Preview smartphone compact.
+- Preview smartphone standard.
+- Preview tablette.
+- Preview paysage.
+- Preview thème clair.
+- Preview thème sombre.
+- Preview grande taille de police.
+- Preview chargement.
+- Preview état vide.
+- Preview erreur.
+
+Utiliser les données fictives uniquement dans les previews, tests et environnements de démonstration.
+
+Ne jamais les présenter comme des données réelles en production.
+
+## 22. Sécurité et confidentialité
+
+Implémenter :
+
+- Firebase App Check.
+- Authentification sécurisée.
+- Vérification des sessions.
+- Révocation des accès.
+- Isolation multi-tenant.
+- Contrôle des permissions serveur.
+- Protection des fichiers.
+- Journalisation des opérations sensibles.
+- Authentification multifacteur des comptes privilégiés.
+- Protection des données locales.
+- Réauthentification pour les opérations sensibles.
+- Gestion sécurisée des secrets.
+- Limitation des abus.
+- Validation des webhooks.
+- Sauvegardes et restauration testée.
+
+Ne jamais inclure de secrets serveur dans l'APK.
+
+## 23. Optimisation des performances et coûts Firebase
+
+Mettre en œuvre :
+
+- Pagination des listes.
+- Chargement différé.
+- LazyColumn.
+- LazyVerticalGrid.
+- Compression des photographies.
+- Cache des images.
+- Requêtes Firestore ciblées.
+- Index composites.
+- Limitation des listeners temps réel.
+- Agrégations serveur.
+- Réutilisation des composants.
+- Réduction des recompositions inutiles.
+- Surveillance des performances.
+- Budgets et alertes de consommation Firebase.
+
+Éviter les requêtes qui téléchargent l'intégralité des données d'une entreprise.
+
+## 24. Livrables obligatoires
+
+Fournir :
+
+1. Projet Android Studio complet.
+2. Code source Kotlin.
+3. Interfaces Jetpack Compose.
+4. Design System.
+5. Catalogue des écrans.
+6. Navigation complète.
+7. Ressources graphiques.
+8. Logo et icône adaptative.
+9. Thèmes clair et sombre.
+10. Configuration Firebase.
+11. Cloud Functions.
+12. Firestore Security Rules.
+13. Storage Security Rules.
+14. Index Firestore.
+15. Tests automatisés.
+16. Documentation technique.
+17. Documentation utilisateur.
+18. Guide d'installation Windows.
+19. Guide de configuration Firebase.
+20. Instructions de compilation.
+21. APK de test.
+22. Configuration de génération AAB.
+23. Guide de publication Google Play.
+24. Rapport des tests.
+25. Rapport des fonctionnalités implémentées.
+26. Liste des intégrations nécessitant des identifiants externes.
+27. Documentation des fonctionnalités restantes.
+
+## 25. Méthode d'exécution
+
+Phase 1 : audit du SaaS existant et définition de la source de vérité.
+
+Phase 2 : architecture Android et configuration Firebase.
+
+Phase 3 : Design System, logo, images et composants.
+
+Phase 4 : authentification et inscription.
+
+Phase 5 : tableaux de bord des trois rôles.
+
+Phase 6 : commandes, clients, articles et atelier.
+
+Phase 7 : caisse, paiements et facturation.
+
+Phase 8 : stocks, personnel et livraisons.
+
+Phase 9 : comptabilité et rapports.
+
+Phase 10 : permissions, validations et audit.
+
+Phase 11 : super-administration et abonnements.
+
+Phase 12 : portail client et notifications.
+
+Phase 13 : responsive, accessibilité et animations.
+
+Phase 14 : tests de sécurité et de performance.
+
+Phase 15 : compilation, documentation et préparation Google Play.
+
+Après chaque phase :
+
+- Compiler le projet.
+- Exécuter les tests.
+- Corriger les erreurs.
+- Vérifier la navigation.
+- Vérifier les interfaces.
+- Vérifier les permissions.
+- Documenter les résultats.
+
+## 26. Instructions impératives pour l'agent IA
+
+Ne pas se limiter à proposer des exemples de code.
+
+Créer réellement les fichiers du projet dans l'environnement disponible.
+
+Ne pas écraser le projet existant.
+
+Ne pas supprimer les fonctionnalités déjà opérationnelles.
+
+Ne pas inventer des API.
+
+Ne pas inventer des clés Firebase.
+
+Ne pas utiliser de boutons sans action réelle.
+
+Ne pas créer de liens vers des écrans inexistants.
+
+Ne pas laisser de formulaires sans validation.
+
+Ne pas présenter des données fictives comme réelles.
+
+Ne pas simuler des paiements réussis en production.
+
+Ne pas désactiver les règles de sécurité pour faciliter les tests.
+
+Ne pas utiliser de permissions Firebase publiques en production.
+
+Ne pas annoncer une fonctionnalité terminée sans implémentation et vérification.
+
+Si une intégration nécessite des identifiants externes, développer l'adaptateur, documenter la configuration et signaler clairement le blocage.
+
+## 27. Résultat final attendu
+
+Une application Android native GESTION PRO AFRICA — Pressing Pro :
+
+- Moderne.
+- Élégante.
+- Professionnelle.
+- Rapide.
+- Responsive.
+- Adaptative.
+- Sécurisée.
+- Multi-entreprises.
+- Multi-agences.
+- Multi-utilisateurs.
+- Connectée aux données réelles.
+- Compatible avec les trois rôles administratifs.
+- Dotée d'un portail client.
+- Adaptée aux entreprises africaines.
+- Préparée pour une commercialisation et une publication Google Play après validation technique.
+
+Commence immédiatement par l'audit, l'architecture, la création du Design System et la préparation des écrans. Poursuis ensuite l'implémentation par modules, sans t'arrêter à la génération de maquettes.

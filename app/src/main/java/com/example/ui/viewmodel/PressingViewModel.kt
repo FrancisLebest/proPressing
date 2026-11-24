@@ -35,6 +35,13 @@ import com.example.data.RolePermissionMatrix
 import com.example.data.RoleSessionResolver
 import com.example.data.ServiceItem
 import com.example.data.StockItem
+import com.example.data.ApprovalRequestRecord
+import com.example.data.ApprovalStatus
+import com.example.data.AuthorizationDecision
+import com.example.data.AuthorizationEngine
+import com.example.data.ManagerAccessPolicy
+import com.example.data.SensitiveOperationType
+import com.example.data.SupportAccessSession
 import com.example.data.TenantDataScoper
 import com.example.data.TrackingTokenGenerator
 import com.example.data.WorkspaceRole
@@ -219,6 +226,27 @@ class PressingViewModel(
 
     val claimsState: StateFlow<UiState<List<ClaimRecord>>> =
         repository.observeClaims(currentUserId).toUiState("réclamations")
+
+    val managerPoliciesState: StateFlow<List<ManagerAccessPolicy>> =
+        repository.observeManagerPolicies(currentUserId)
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    val approvalRequestsState: StateFlow<List<ApprovalRequestRecord>> =
+        repository.observeApprovalRequests(currentUserId)
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    private val _supportSession = MutableStateFlow<SupportAccessSession?>(null)
+    val supportSession: StateFlow<SupportAccessSession?> = _supportSession.asStateFlow()
 
     private val _rolePermissionsMap = MutableStateFlow(
         WorkspaceRole.entries.associateWith { RolePermissionMatrix.defaultPermissionsFor(it) }
@@ -1231,5 +1259,150 @@ class PressingViewModel(
                 )
             }
         }
+    }
+
+    // --- RBAC+ABAC MANAGER POLICIES, APPROVAL WORKFLOW & SUPPORT SESSION ---
+
+    fun saveManagerPolicy(policy: ManagerAccessPolicy) {
+        if (!requirePermission(AccessPermission.EDIT_PRIVILEGE_MATRIX, "Configurer accès & plafonds gestionnaire")) return
+        viewModelScope.launch {
+            _isBusy.value = true
+            val res = repository.saveManagerPolicy(currentUserId, policy)
+            _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit(
+                    action = "Politique d'accès mise à jour pour ${policy.employeeName} (profil ${policy.profileCode}, remise max ${policy.maxDiscountPercent}%)",
+                    allowed = true
+                )
+            }
+            showResult(res, "Politique d'accès et plafonds enregistrés pour ${policy.employeeName}.")
+        }
+    }
+
+    fun submitApprovalRequest(
+        operationType: SensitiveOperationType,
+        resourceRef: String,
+        amountFcfa: Long,
+        ceilingFcfa: Long,
+        reason: String
+    ) {
+        val session = _activeRoleSession.value
+        val safeReason = reason.trim()
+        if (safeReason.length < 4) {
+            _feedbackMessage.value = "Veuillez renseigner un motif clair (au moins 4 caractères)."
+            return
+        }
+        val agency = session.isolatedAgency
+            ?: (companyState.value as? UiState.Success)?.data?.agencies?.firstOrNull()
+            ?: "Agence Principale"
+        val req = ApprovalRequestRecord(
+            agencyName = agency,
+            requestedBy = session.operatorName,
+            requestedByRole = session.role.labelFr,
+            operationType = operationType.name,
+            resourceRef = resourceRef.trim().ifBlank { "OP-${System.currentTimeMillis() % 100000}" },
+            amountFcfa = amountFcfa.coerceAtLeast(0L),
+            ceilingFcfa = ceilingFcfa.coerceAtLeast(0L),
+            reason = safeReason,
+            payloadHash = AuthorizationEngine.computePayloadHash(operationType.name, resourceRef, amountFcfa, agency),
+            status = ApprovalStatus.PENDING.name
+        )
+        viewModelScope.launch {
+            _isBusy.value = true
+            val res = repository.submitApprovalRequest(currentUserId, req)
+            _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit(
+                    action = "Demande de validation soumise : ${operationType.labelFr} (${formatMoney(amountFcfa)}) — $safeReason",
+                    allowed = true
+                )
+            }
+            showResult(res, "Demande transmise à l'Admin Pressing pour validation.")
+        }
+    }
+
+    fun reviewApprovalRequest(
+        request: ApprovalRequestRecord,
+        approve: Boolean,
+        note: String
+    ) {
+        val reviewer = _activeRoleSession.value
+        when (val decision = AuthorizationEngine.validateApprovalReview(reviewer, request)) {
+            is AuthorizationDecision.Denied -> {
+                recordAudit(
+                    action = "Validation bloquée sur ${request.resourceRef} : ${decision.reasonFr}",
+                    allowed = false
+                )
+                _feedbackMessage.value = decision.reasonFr
+                return
+            }
+            is AuthorizationDecision.RequiresApproval -> {
+                _feedbackMessage.value = decision.reasonFr
+                return
+            }
+            AuthorizationDecision.Allowed -> Unit
+        }
+        val targetStatus = if (approve) ApprovalStatus.EXECUTED else ApprovalStatus.REJECTED
+        val execTs = if (approve) System.currentTimeMillis() else 0L
+        viewModelScope.launch {
+            _isBusy.value = true
+            val res = repository.reviewApprovalRequest(
+                userId = currentUserId,
+                requestId = request.id,
+                newStatus = targetStatus,
+                reviewedBy = reviewer.operatorName,
+                reviewNote = note.trim().ifBlank { if (approve) "Approuvée et exécutée" else "Rejetée par l'administrateur" },
+                executedAtMillis = execTs
+            )
+            _isBusy.value = false
+            if (res.isSuccess) {
+                recordAudit(
+                    action = "${if (approve) "Demande approuvée & exécutée" else "Demande rejetée"} : ${request.operationEnum().labelFr} (${formatMoney(request.amountFcfa)})",
+                    allowed = approve
+                )
+            }
+            showResult(
+                res,
+                if (approve) "Demande approuvée, exécutée et journalisée." else "Demande rejetée et motif enregistré."
+            )
+        }
+    }
+
+    fun startSupportSession(ticketId: String, reason: String, durationMinutes: Int = 30) {
+        val session = _activeRoleSession.value
+        if (!session.isSuperAdmin) {
+            _feedbackMessage.value = "Session d'assistance réservée au Super-Admin."
+            return
+        }
+        if (ticketId.isBlank() || reason.trim().length < 5) {
+            _feedbackMessage.value = "Numéro de ticket et motif obligatoires pour une session d'assistance."
+            return
+        }
+        val now = System.currentTimeMillis()
+        val companyName = (companyState.value as? UiState.Success)?.data?.companyName ?: "Entreprise"
+        _supportSession.value = SupportAccessSession(
+            ticketId = ticketId.trim(),
+            superAdminName = session.operatorName,
+            targetCompanyName = companyName,
+            reason = reason.trim(),
+            startsAtMillis = now,
+            expiresAtMillis = now + durationMinutes.coerceIn(5, 120) * 60_000L,
+            readOnly = true,
+            revoked = false
+        )
+        recordAudit(
+            action = "Session d'assistance Super-Admin ouverte (Ticket #${ticketId.trim()}, lecture seule, ${durationMinutes} min) — ${reason.trim()}",
+            allowed = true
+        )
+    }
+
+    fun revokeSupportSession() {
+        val current = _supportSession.value ?: return
+        _supportSession.value = null
+        recordAudit(
+            action = "Session d'assistance Super-Admin révoquée (Ticket #${current.ticketId})",
+            allowed = true
+        )
+        _feedbackMessage.value = "Session d'assistance révoquée immédiatement."
     }
 }

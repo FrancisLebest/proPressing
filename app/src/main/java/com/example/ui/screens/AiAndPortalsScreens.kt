@@ -66,6 +66,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -95,6 +96,7 @@ import com.example.data.QrCodeValidator
 import com.example.data.RolePermissionMatrix
 import com.example.data.ServiceItem
 import com.example.data.SubscriptionPlan
+import com.example.data.SupportAccessSession
 import com.example.data.TrackingTokenGenerator
 import com.example.data.WorkspaceRole
 import androidx.compose.material.icons.rounded.AdminPanelSettings
@@ -595,6 +597,10 @@ fun SaasAdminScreen(
     orders: List<PressingOrder>,
     clients: List<ClientRecord>,
     transactions: List<AccountingEntry>,
+    activeSupportSession: com.example.data.SupportAccessSession? = null,
+    isSuperAdmin: Boolean = false,
+    onStartSupportSession: (String, String, Int) -> Unit = { _, _, _ -> },
+    onRevokeSupportSession: () -> Unit = {},
     onUpdateCompany: (CompanyConfig) -> Unit,
     onBack: () -> Unit
 ) {
@@ -602,6 +608,9 @@ fun SaasAdminScreen(
     val context = LocalContext.current
     var selectedPlan by remember { mutableStateOf(SubscriptionPlan.fromRaw(company.subscriptionPlan)) }
     var selectedBilling by remember { mutableStateOf(company.subscriptionBilling) }
+    var supportTicketId by remember { mutableStateOf("SUP-2026-01") }
+    var supportReason by remember { mutableStateOf("") }
+    var supportDurationMin by remember { mutableIntStateOf(30) }
 
     Scaffold(
         topBar = {
@@ -635,6 +644,99 @@ fun SaasAdminScreen(
                     Text("Espace Tenant : ${company.companyName}", color = Color.White, fontWeight = FontWeight.Bold)
                     Text("Statut SaaS : ${company.subscriptionStatus} · Formule ${selectedPlan.labelFr}", color = AfricaGold, style = MaterialTheme.typography.bodySmall)
                     Text("${company.agencies.size} entité(s)/agence(s) · ${clients.size} clients · ${orders.size} commandes · ${transactions.size} écritures", color = Color(0xFFCCD9FF), style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            // Audited Read-Only Super-Admin Support Session Card (Section 3.9)
+            if (isSuperAdmin) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, AfricaGold)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Session d'assistance Super-Admin (Lecture seule auditée)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MidnightNavy
+                        )
+                        Text(
+                            text = "Tout accès de support est limité dans le temps, rattaché à un ticket d'assistance, journalisé intégralement et révocable immédiatement.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (activeSupportSession != null && activeSupportSession.isValidAt()) {
+                            Surface(shape = RoundedCornerShape(12.dp), color = EmeraldContainer, modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "Session active · Ticket #${activeSupportSession.ticketId} (Lecture seule)",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                    Text(
+                                        text = "Motif : ${activeSupportSession.reason}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF065F46)
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onRevokeSupportSession,
+                                border = BorderStroke(1.dp, CrimsonDanger),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            ) {
+                                Text("Révoquer immédiatement la session d'assistance", color = CrimsonDanger, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = supportTicketId,
+                                    onValueChange = { supportTicketId = it.take(30) },
+                                    label = { Text("N° Ticket") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.width(132.dp)
+                                )
+                                OutlinedTextField(
+                                    value = supportReason,
+                                    onValueChange = { supportReason = it.take(180) },
+                                    label = { Text("Motif obligatoire") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(15, 30, 60).forEach { mins ->
+                                    FilterChip(
+                                        selected = supportDurationMin == mins,
+                                        onClick = { supportDurationMin = mins },
+                                        label = { Text("$mins min") },
+                                        modifier = Modifier.heightIn(min = 48.dp)
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    onStartSupportSession(supportTicketId, supportReason, supportDurationMin)
+                                    supportReason = ""
+                                },
+                                enabled = supportTicketId.isNotBlank() && supportReason.trim().length >= 5,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MidnightNavy),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("saas_start_support_session_btn")
+                            ) {
+                                Text("Ouvrir session d'assistance auditée", color = AfricaGold, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
 

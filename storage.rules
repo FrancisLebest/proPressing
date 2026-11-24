@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// GESTION PRO AFRICA — Pressing Pro Cloud Storage Security Rules
+// Strict Multi-Tenant Isolation & DENY BY DEFAULT (Section 11)
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(ownerUid) {
+      return isAuthenticated() && request.auth.uid == ownerUid;
+    }
+
+    function isValidImageUpload() {
+      return request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)');
+    }
+
+    function isValidDocumentUpload() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType == 'application/pdf'
+          || request.resource.contentType.matches('image/(jpeg|jpg|png|webp)')
+        );
+    }
+
+    // Tenant-scoped garment reception & quality photos
+    match /tenants/{ownerUid}/garments/{orderId}/{fileName} {
+      allow read: if isOwner(ownerUid);
+      allow write: if isOwner(ownerUid) && isValidImageUpload();
+      allow delete: if isOwner(ownerUid);
+    }
+
+    // Tenant-scoped company branding logos
+    match /tenants/{ownerUid}/branding/{fileName} {
+      allow read: if isOwner(ownerUid);
+      allow write: if isOwner(ownerUid) && isValidImageUpload();
+      allow delete: if isOwner(ownerUid);
+    }
+
+    // Tenant-scoped receipts, invoices & delivery proofs
+    match /tenants/{ownerUid}/documents/{docType}/{fileName} {
+      allow read: if isOwner(ownerUid);
+      allow write: if isOwner(ownerUid) && isValidDocumentUpload();
+      allow delete: if false; // Financial receipts and delivery proofs are immutable
+    }
+
+    // Default deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -23,15 +23,72 @@ import kotlinx.coroutines.withContext
 private const val AUTH_REPO_TAG = "AuthRepository"
 private const val PHONE_AUTH_DOMAIN = "pressingpro.africa"
 private const val PHONE_AUTH_PREFIX = "tel."
+private const val USERNAME_AUTH_PREFIX = "usr."
 
 enum class AuthMethod(
     val labelFr: String,
     val isCloudProvisioned: Boolean
 ) {
     GOOGLE("Google", true),
-    EMAIL_PASSWORD("E-mail", true),
-    PHONE_PASSWORD("Téléphone", true)
+    EMAIL_PASSWORD("E-mail", false),
+    PHONE_PASSWORD("Téléphone", false),
+    USERNAME_LOGIN("Login", false)
 }
+
+/**
+ * Multi-step enterprise registration draft.
+ * Public signup strictly provisions PRESSING_ADMIN — never SUPER_ADMIN or PRESSING_MANAGER.
+ */
+data class EnterpriseRegistrationDraft(
+    val companyName: String = "",
+    val businessType: String = "Pressing",
+    val country: String = "Côte d'Ivoire",
+    val city: String = "Abidjan",
+    val commune: String = "",
+    val address: String = "",
+    val businessPhone: String = "",
+    val businessEmail: String = "",
+    val adminFullName: String = "",
+    val adminEmail: String = "",
+    val adminPhone: String = "",
+    val adminUsername: String = "",
+    val acceptedTermsVersion: String = "CGU-2026.1"
+) {
+    val enforcedSystemRole: SystemRoleTier = SystemRoleTier.PRESSING_ADMIN
+}
+
+/**
+ * Client-side anti-brute-force guard complementing Firebase Auth server-side throttling.
+ */
+class AuthRateLimiter(
+    private val maxFailures: Int = 5,
+    private val cooldownMillis: Long = 30_000L
+) {
+    private var consecutiveFailures = 0
+    private var blockedUntilMillis = 0L
+
+    fun remainingCooldownSeconds(nowMillis: Long = System.currentTimeMillis()): Int {
+        if (nowMillis >= blockedUntilMillis) return 0
+        return (((blockedUntilMillis - nowMillis) + 999L) / 1000L).toInt()
+    }
+
+    fun recordFailure(nowMillis: Long = System.currentTimeMillis()) {
+        consecutiveFailures++
+        if (consecutiveFailures >= maxFailures) {
+            blockedUntilMillis = nowMillis + cooldownMillis
+        }
+    }
+
+    fun recordSuccess() {
+        consecutiveFailures = 0
+        blockedUntilMillis = 0L
+    }
+}
+
+class EmailPasswordProviderDisabledException(
+    message: String,
+    cause: Throwable? = null
+) : Exception(message, cause)
 
 data class CountryDialCode(
     val countryName: String,
@@ -261,6 +318,49 @@ object AuthInputValidator {
         return errors
     }
 
+    private val USERNAME_REGEX = Regex("^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])?$")
+
+    fun normalizeUsername(rawUsername: String): String = rawUsername.trim().lowercase()
+
+    fun validateUsername(rawUsername: String): String? {
+        val normalized = normalizeUsername(rawUsername)
+        if (normalized.isEmpty()) return "Veuillez saisir votre identifiant de connexion (login)."
+        if (normalized.length < 3) return "L'identifiant doit contenir au moins 3 caractères."
+        if (normalized.length > 32) return "L'identifiant ne peut pas dépasser 32 caractères."
+        if (!USERNAME_REGEX.matches(normalized)) {
+            return "Format d'identifiant invalide (lettres minuscules, chiffres, points, tirets)."
+        }
+        return null
+    }
+
+    fun usernameToAuthIdentifier(rawUsername: String): String {
+        val normalized = normalizeUsername(rawUsername)
+        return "$USERNAME_AUTH_PREFIX$normalized@$PHONE_AUTH_DOMAIN"
+    }
+
+    fun validateUsernameRegistration(
+        fullName: String,
+        rawUsername: String,
+        password: String,
+        confirmPassword: String,
+        acceptedTerms: Boolean
+    ): List<String> {
+        val errors = mutableListOf<String>()
+        validateDisplayName(fullName)?.let { errors += it }
+        validateUsername(rawUsername)?.let { errors += it }
+        val pwd = evaluatePassword(password)
+        if (!pwd.isAcceptable) {
+            errors += "Mot de passe insuffisant : ${pwd.missingRequirements.joinToString(", ")}."
+        }
+        if (password != confirmPassword) {
+            errors += "Les mots de passe ne correspondent pas."
+        }
+        if (!acceptedTerms) {
+            errors += "Veuillez accepter les Conditions d'utilisation."
+        }
+        return errors
+    }
+
     fun validateDisplayName(rawName: String): String? {
         val trimmed = rawName.trim()
         if (trimmed.length < 2) return "Le nom doit contenir au moins 2 caractères."
@@ -273,7 +373,8 @@ object AuthErrorMapper {
     fun mapFirebaseErrorCode(errorCode: String?): String {
         return when (errorCode) {
             "ERROR_INVALID_CREDENTIAL",
-            "ERROR_WRONG_PASSWORD" ->
+            "ERROR_WRONG_PASSWORD",
+            "ERROR_USER_NOT_FOUND" ->
                 "Identifiants invalides ou mot de passe incorrect. Vérifiez vos informations et réessayez."
 
             "ERROR_INVALID_EMAIL" ->
@@ -281,9 +382,6 @@ object AuthErrorMapper {
 
             "ERROR_USER_DISABLED" ->
                 "Ce compte utilisateur a été désactivé par l'administrateur."
-
-            "ERROR_USER_NOT_FOUND" ->
-                "Aucun compte associé à ces identifiants n'a été trouvé."
 
             "ERROR_EMAIL_ALREADY_IN_USE",
             "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" ->
@@ -371,6 +469,31 @@ class AuthRepository(
         }
     }
 
+    private fun isProviderDisabledError(throwable: Throwable): Boolean {
+        if (throwable is FirebaseAuthException && throwable.errorCode == "ERROR_OPERATION_NOT_ALLOWED") {
+            return true
+        }
+        val msg = throwable.message.orEmpty()
+        return msg.contains("OPERATION_NOT_ALLOWED", ignoreCase = true) ||
+            msg.contains("provider is disabled", ignoreCase = true) ||
+            msg.contains("operation is not allowed", ignoreCase = true)
+    }
+
+    private fun mapEmailOrPhoneAuthFailure(operation: String, e: Exception): Result<AuthUserProfile> {
+        return if (isProviderDisabledError(e)) {
+            Log.w(AUTH_REPO_TAG, "$operation skipped: Email/Password provider is disabled in Firebase Console")
+            Result.failure(
+                EmailPasswordProviderDisabledException(
+                    AuthErrorMapper.mapFirebaseErrorCode("ERROR_OPERATION_NOT_ALLOWED"),
+                    e
+                )
+            )
+        } else {
+            Log.e(AUTH_REPO_TAG, "$operation failed", e)
+            Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+        }
+    }
+
     suspend fun signInWithEmailCredential(
         rawEmail: String,
         password: String
@@ -390,8 +513,7 @@ class AuthRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(AUTH_REPO_TAG, "Firebase email credential sign-in failed", e)
-            Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+            mapEmailOrPhoneAuthFailure("Firebase email credential sign-in", e)
         }
     }
 
@@ -425,8 +547,7 @@ class AuthRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(AUTH_REPO_TAG, "Firebase email registration failed", e)
-            Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+            mapEmailOrPhoneAuthFailure("Firebase email registration", e)
         }
     }
 
@@ -440,8 +561,18 @@ class AuthRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(AUTH_REPO_TAG, "Firebase password reset failed", e)
-            Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+            if (isProviderDisabledError(e)) {
+                Log.w(AUTH_REPO_TAG, "Firebase password reset skipped: Email/Password provider disabled")
+                Result.failure(
+                    EmailPasswordProviderDisabledException(
+                        AuthErrorMapper.mapFirebaseErrorCode("ERROR_OPERATION_NOT_ALLOWED"),
+                        e
+                    )
+                )
+            } else {
+                Log.e(AUTH_REPO_TAG, "Firebase password reset failed", e)
+                Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+            }
         }
     }
 
@@ -467,8 +598,7 @@ class AuthRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(AUTH_REPO_TAG, "Firebase phone+password credential sign-in failed", e)
-            Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
+            mapEmailOrPhoneAuthFailure("Firebase phone+password credential sign-in", e)
         }
     }
 
@@ -505,7 +635,79 @@ class AuthRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(AUTH_REPO_TAG, "Firebase phone+password registration failed", e)
+            mapEmailOrPhoneAuthFailure("Firebase phone+password registration", e)
+        }
+    }
+
+    suspend fun signInWithUsernamePassword(
+        rawUsername: String,
+        password: String
+    ): Result<AuthUserProfile> {
+        AuthInputValidator.validateUsername(rawUsername)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        AuthInputValidator.validateSignInPassword(password)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        val authId = AuthInputValidator.usernameToAuthIdentifier(rawUsername)
+        return try {
+            val credential = EmailAuthProvider.getCredential(authId, password)
+            val result = firebaseAuth.signInWithCredential(credential).await()
+            val user = result.user
+                ?: return Result.failure(IllegalStateException("Session utilisateur introuvable après connexion."))
+            Result.success(user.toAuthUserProfile())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            mapEmailOrPhoneAuthFailure("Firebase username+password credential sign-in", e)
+        }
+    }
+
+    suspend fun registerWithUsernamePassword(
+        fullName: String,
+        rawUsername: String,
+        password: String
+    ): Result<AuthUserProfile> {
+        AuthInputValidator.validateDisplayName(fullName)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        AuthInputValidator.validateUsername(rawUsername)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        val pwdEval = AuthInputValidator.evaluatePassword(password)
+        if (!pwdEval.isAcceptable) {
+            return Result.failure(
+                IllegalArgumentException("Mot de passe insuffisant : ${pwdEval.missingRequirements.joinToString(", ")}.")
+            )
+        }
+        val authId = AuthInputValidator.usernameToAuthIdentifier(rawUsername)
+        return try {
+            val result = firebaseAuth.createUserWithEmailAndPassword(authId, password).await()
+            val user = result.user
+                ?: return Result.failure(IllegalStateException("Impossible de créer le compte utilisateur."))
+            val profileReq = UserProfileChangeRequest.Builder()
+                .setDisplayName(fullName.trim())
+                .build()
+            user.updateProfile(profileReq).await()
+            user.reload().await()
+            Result.success(firebaseAuth.currentUser?.toAuthUserProfile() ?: user.toAuthUserProfile())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            mapEmailOrPhoneAuthFailure("Firebase username+password registration", e)
+        }
+    }
+
+    suspend fun sendEmailVerification(): Result<Unit> {
+        val user = firebaseAuth.currentUser
+            ?: return Result.failure(IllegalStateException("Aucun compte connecté pour envoyer la vérification."))
+        return try {
+            user.sendEmailVerification().await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(AUTH_REPO_TAG, "Failed to send verification email", e)
             Result.failure(Exception(AuthErrorMapper.mapThrowable(e), e))
         }
     }

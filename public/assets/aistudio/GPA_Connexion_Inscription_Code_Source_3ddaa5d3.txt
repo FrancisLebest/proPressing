@@ -1,0 +1,133 @@
+GESTION PRO AFRICA — PRESSING PRO
+Code source Android Kotlin / Jetpack Compose / Firebase
+Contenu intégral des fichiers texte du ZIP précédent.
+Compilation non vérifiée ; intégrations serveur et OTP à compléter.
+
+==============================================================================
+FICHIER : gpa-auth/app/src/main/java/ci/gpa/auth/MainActivity.kt
+==============================================================================
+package ci.gpa.auth
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.*
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.functions.FirebaseFunctions
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+
+private val Navy = Color(0xFF101D3A)
+private val Blue = Color(0xFF2563EB)
+private val Gold = Color(0xFFF0B429)
+class MainActivity : ComponentActivity() {
+ override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { MaterialTheme(colorScheme = lightColorScheme(primary=Blue, secondary=Gold, background=Color(0xFFF8FAFC))) { AuthScreen() } } }
+}
+@Composable private fun Brand(modifier: Modifier = Modifier) {
+ Column(modifier.background(Navy).padding(28.dp), verticalArrangement=Arrangement.Center) {
+ Text("GESTION PRO", color=Color.White, fontSize=30.sp, fontWeight=FontWeight.Bold)
+ Text("AFRICA", color=Gold, fontSize=34.sp, fontWeight=FontWeight.Bold)
+ Text("Pressing Pro", color=Color.White, fontSize=20.sp)
+ Spacer(Modifier.height(12.dp)); Text("La gestion professionnelle, simplement.", color=Color.White)
+ }
+}
+@Composable private fun Field(label:String, value:String, change:(String)->Unit, type:KeyboardType=KeyboardType.Text) {
+ OutlinedTextField(value,change,Modifier.fillMaxWidth(),label={Text(label)},singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=type))
+}
+@Composable private fun Password(label:String,value:String,change:(String)->Unit) {
+ var visible by remember { mutableStateOf(false) }
+ OutlinedTextField(value,change,Modifier.fillMaxWidth(),label={Text(label)},singleLine=true,visualTransformation=if(visible) VisualTransformation.None else PasswordVisualTransformation(),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Password),trailingIcon={IconButton(onClick={visible=!visible}) { Icon(if(visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,if(visible) "Masquer" else "Afficher") }})
+}
+@Composable fun AuthScreen() {
+ val auth=remember { FirebaseAuth.getInstance() }; val functions=remember { FirebaseFunctions.getInstance() }; val scope=rememberCoroutineScope()
+ var page by remember { mutableStateOf("login") }; var mode by remember { mutableIntStateOf(0) }; var identifier by remember { mutableStateOf("") }; var email by remember { mutableStateOf("") }; var phone by remember { mutableStateOf("") }; var login by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var company by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var confirm by remember { mutableStateOf("") }; var consent by remember { mutableStateOf(false) }; var busy by remember { mutableStateOf(false) }; var message by remember { mutableStateOf("") }
+ fun run(action:suspend ()->Unit) { if(busy)return; busy=true; message=""; scope.launch { try { action() } catch(e:Exception) { message="Opération impossible. Vérifiez vos informations ou réessayez." } finally { busy=false } } }
+ suspend fun finishLogin() { val user=auth.currentUser ?: error("Session absente"); if(!user.isEmailVerified) { user.sendEmailVerification().await(); page="verify"; return }; val result=functions.getHttpsCallable("getAccessContext").call().await().data as? Map<*,*> ?: error("Contexte absent"); page="success"; message="Accès : ${result["role"]}" }
+ BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().imePadding()) {
+ val wide=maxWidth>=600.dp
+ val form: @Composable (Modifier)->Unit = { modifier -> Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+ Text(when(page){"register"->"Créer une entreprise";"reset"->"Mot de passe oublié";"verify"->"Vérifiez votre e-mail";"success"->"Bienvenue";else->"Connexion"},fontSize=28.sp,fontWeight=FontWeight.Bold,color=Navy)
+ when(page) {
+ "login" -> { Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) { listOf("E-mail","Téléphone","Login").forEachIndexed { i,t -> FilterChip(selected=mode==i,onClick={mode=i;identifier=""},label={Text(t)}) } }; Field(listOf("Adresse e-mail","Téléphone (+225…)","Identifiant")[mode],identifier,{identifier=it},listOf(KeyboardType.Email,KeyboardType.Phone,KeyboardType.Text)[mode]); Password("Mot de passe",password,{password=it}); TextButton(onClick={page="reset";message=""}){Text("Mot de passe oublié ?")}; Button(enabled=!busy&&identifier.isNotBlank()&&password.isNotBlank(),modifier=Modifier.fillMaxWidth(),onClick={run { if(mode==0) auth.signInWithEmailAndPassword(identifier.trim(),password).await() else { val data=functions.getHttpsCallable("signInByAlias").call(mapOf("type" to if(mode==1) "phone" else "login","identifier" to identifier.trim(),"password" to password)).await().data as Map<*,*>; auth.signInWithCustomToken(data["token"] as String).await() }; password="";finishLogin() }}){Text("Se connecter")}; OutlinedButton(onClick={page="register";password="";message=""},modifier=Modifier.fillMaxWidth()){Text("Créer un compte entreprise")} }
+ "register" -> { Field("Nom de l’entreprise",company,{company=it});Field("Nom complet",name,{name=it});Field("E-mail",email,{email=it},KeyboardType.Email);Field("Téléphone (+225…)",phone,{phone=it},KeyboardType.Phone);Field("Login",login,{login=it});Password("Mot de passe",password,{password=it});LinearProgressIndicator(progress={ (password.length/12f).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth());Text("12 caractères minimum recommandés");Password("Confirmer le mot de passe",confirm,{confirm=it});Row(verticalAlignment=Alignment.CenterVertically){Checkbox(consent,{consent=it});Text("J’accepte les conditions et la politique de confidentialité")};Button(enabled=!busy&&consent&&company.isNotBlank()&&name.isNotBlank()&&email.contains('@')&&phone.startsWith('+')&&login.length>=3&&password.length>=12&&password==confirm,modifier=Modifier.fillMaxWidth(),onClick={run { val user=auth.createUserWithEmailAndPassword(email.trim(),password).await().user ?: error("Compte absent"); functions.getHttpsCallable("registerOrganization").call(mapOf("company" to company,"name" to name,"phone" to phone,"login" to login,"consent" to true)).await(); user.sendEmailVerification().await();password="";confirm="";page="verify" }}){Text("S’inscrire")};TextButton(onClick={page="login";password="";confirm=""}){Text("Déjà un compte ? Se connecter")} }
+ "reset" -> { Field("Adresse e-mail",email,{email=it},KeyboardType.Email);Button(enabled=!busy&&email.contains('@'),onClick={run { auth.sendPasswordResetEmail(email.trim()).await();message="Si le compte existe, consultez votre messagerie." }}){Text("Envoyer le lien")};TextButton(onClick={page="login"}){Text("Retour")} }
+ "verify" -> { Text("Ouvrez le lien reçu dans votre messagerie.");Button(enabled=!busy,onClick={run { auth.currentUser?.reload()?.await(); if(auth.currentUser?.isEmailVerified==true) {auth.currentUser?.getIdToken(true)?.await();finishLogin()} else message="Adresse pas encore vérifiée." }}){Text("J’ai vérifié mon adresse")};TextButton(onClick={run { auth.currentUser?.sendEmailVerification()?.await();message="Lien envoyé." }}){Text("Renvoyer le lien")} }
+ "success" -> Text("Session authentifiée. Connectez ici le tableau de bord correspondant au rôle.")
+ }; if(busy) CircularProgressIndicator();if(message.isNotBlank()) Text(message,color=Navy);if(page=="verify"||page=="success") TextButton(onClick={auth.signOut();page="login";message=""}){Text("Se déconnecter")}
+ } }
+ if(wide) Row(Modifier.fillMaxSize()){Brand(Modifier.weight(1f).fillMaxHeight());form(Modifier.weight(1f).fillMaxHeight())} else Column(Modifier.fillMaxSize()){Brand(Modifier.fillMaxWidth());form(Modifier.weight(1f).fillMaxWidth())}
+ }
+}
+
+
+==============================================================================
+FICHIER : gpa-auth/README.md
+==============================================================================
+# GPA Auth — prototype Android intégrable
+Ouvrir dans Android Studio avec JDK 17 et SDK 35. Ajouter app/google-services.json depuis votre projet Firebase (package ci.gpa.auth), activer Email/Password. Synchroniser Gradle. Aucun wrapper Gradle fourni : utiliser Android Studio ou Gradle 8.9 installé.
+
+Le code fournit les formulaires Compose adaptatifs et les appels Firebase. Il n'a pas été compilé ici. Les fonctions serveur registerOrganization, signInByAlias et getAccessContext sont des contrats à implémenter dans votre backend existant, pas des fonctions déployées. Ne pas utiliser en production avant cela. L'inscription peut laisser un compte Auth sans organisation si l'appel serveur échoue : prévoir reprise idempotente. Téléphone + mot de passe et login + mot de passe nécessitent une résolution privée des alias, validation des identifiants auprès du fournisseur Auth, limitation des tentatives et émission serveur d'un custom token. Le téléphone saisi n'est pas vérifié par OTP dans cette version. Ne pas autoriser un alias téléphonique avant vérification de possession. Les conditions doivent être reliées à vos documents légaux. Le logo et la photo officiels ne sont pas fournis : en-tête typographique provisoire. Les tableaux de bord sont des points d'intégration, non inclus. La session persistante et la reprise d'inscription doivent être intégrées avant production.
+
+
+==============================================================================
+FICHIER : gpa-auth/app/build.gradle.kts
+==============================================================================
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose"); id("com.google.gms.google-services") }
+android { namespace = "ci.gpa.auth"; compileSdk = 35
+ defaultConfig { applicationId = "ci.gpa.auth"; minSdk = 24; targetSdk = 35; versionCode = 1; versionName = "1.0" }
+ compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+ kotlinOptions { jvmTarget = "17" }; buildFeatures { compose = true }
+}
+dependencies {
+ implementation(platform("androidx.compose:compose-bom:2024.12.01")); implementation("androidx.compose.material3:material3"); implementation("androidx.compose.material:material-icons-extended"); implementation("androidx.activity:activity-compose:1.10.0"); implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+ implementation(platform("com.google.firebase:firebase-bom:33.7.0")); implementation("com.google.firebase:firebase-auth"); implementation("com.google.firebase:firebase-functions"); implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+}
+
+
+==============================================================================
+FICHIER : gpa-auth/app/src/main/AndroidManifest.xml
+==============================================================================
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:label="Pressing Pro" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false"><activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>
+
+
+==============================================================================
+FICHIER : gpa-auth/build.gradle.kts
+==============================================================================
+plugins {
+ id("com.android.application") version "8.7.3" apply false
+ id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+ id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
+ id("com.google.gms.google-services") version "4.4.2" apply false
+}
+
+
+==============================================================================
+FICHIER : gpa-auth/gradle.properties
+==============================================================================
+android.useAndroidX=true
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+
+
+==============================================================================
+FICHIER : gpa-auth/settings.gradle.kts
+==============================================================================
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+rootProject.name = "GPAAuth"
+include(":app")

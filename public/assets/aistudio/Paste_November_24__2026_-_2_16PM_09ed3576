@@ -1,0 +1,1889 @@
+Ne pas remplacer les fonctionnalités existantes. Commencer par auditer le projet, les modèles, les migrations, les vues, les routes et le système d'authentification.
+
+Ne pas se limiter à masquer des boutons dans le frontend. Toutes les autorisations doivent être vérifiées côté serveur.
+
+---
+
+## 2. Les trois rôles principaux
+
+Créer trois rôles système :
+
+- SUPER_ADMIN : administrateur global de la plateforme.
+- PRESSING_ADMIN : administrateur propriétaire ou directeur d'une entreprise.
+- PRESSING_MANAGER : gestionnaire opérationnel d'une entreprise.
+
+Chaque rôle possède :
+
+- Son propre tableau de bord.
+- Son propre menu de navigation.
+- Ses propres fonctionnalités.
+- Ses propres permissions.
+- Ses propres notifications.
+- Ses propres indicateurs statistiques.
+- Ses propres restrictions.
+- Son propre périmètre de données.
+
+Un utilisateur peut appartenir à plusieurs entreprises uniquement si des appartenances distinctes et valides lui ont été attribuées.
+
+Le rôle d'un utilisateur dans une entreprise ne lui confère aucun droit dans une autre entreprise.
+
+---
+
+## 3. Rôle SUPER_ADMIN
+
+### 3.1. Responsabilité
+
+Le Super-Admin est responsable du fonctionnement global de GESTION PRO AFRICA.
+
+Il administre la plateforme SaaS, mais n'est pas automatiquement un employé ou un gestionnaire des entreprises clientes.
+
+### 3.2. Tableau de bord global
+
+Afficher :
+
+- Nombre total d'entreprises.
+- Entreprises actives.
+- Entreprises suspendues.
+- Entreprises en période d'essai.
+- Nouvelles inscriptions.
+- Nombre total d'utilisateurs.
+- Utilisateurs actifs.
+- Abonnements actifs.
+- Abonnements expirés.
+- Revenus mensuels du SaaS.
+- Revenus annuels du SaaS.
+- Revenus récurrents mensuels.
+- Taux de renouvellement.
+- Taux de résiliation.
+- Répartition des entreprises par pays.
+- Répartition par secteur d'activité.
+- Tickets d'assistance.
+- État des services techniques.
+- Alertes de sécurité.
+- Historique des activités administratives.
+
+### 3.3. Gestion des entreprises
+
+Autoriser :
+
+- Création d'entreprise.
+- Consultation des entreprises.
+- Validation des inscriptions.
+- Activation.
+- Suspension.
+- Réactivation.
+- Archivage.
+- Gestion des statuts.
+- Consultation des informations administratives.
+- Consultation des administrateurs associés.
+- Gestion des limites d'utilisation.
+- Attribution des modules.
+- Gestion des périodes d'essai.
+- Consultation de l'utilisation des ressources.
+- Gestion des demandes de suppression et d'exportation.
+
+Toute suspension doit comporter un motif, une date et une trace d'audit.
+
+La suppression définitive doit respecter les obligations de conservation des données et suivre un processus contrôlé.
+
+### 3.4. Gestion des abonnements
+
+Autoriser :
+
+- Création des forfaits.
+- Modification des forfaits.
+- Configuration des tarifs.
+- Gestion des abonnements mensuels et annuels.
+- Gestion des modules à la carte.
+- Gestion des promotions.
+- Gestion des coupons.
+- Configuration des périodes d'essai.
+- Configuration des quotas.
+- Renouvellement.
+- Suspension des abonnements.
+- Consultation des paiements.
+- Gestion des factures SaaS.
+- Gestion des échéances.
+- Gestion des impayés SaaS.
+
+### 3.5. Gestion des modules métiers
+
+Autoriser :
+
+- Création et configuration des modules.
+- Activation du module Pressing.
+- Activation du module Laverie.
+- Activation du module Blanchisserie.
+- Gestion des dépendances entre modules.
+- Configuration des fonctionnalités disponibles par forfait.
+- Déploiement progressif des fonctionnalités.
+- Maintenance des modules.
+- Gestion des versions.
+- Configuration des feature flags.
+
+### 3.6. Gestion des utilisateurs
+
+Autoriser :
+
+- Consultation des comptes de la plateforme.
+- Gestion des statuts des comptes.
+- Suspension des comptes compromis.
+- Révocation des sessions.
+- Gestion des administrateurs de plateforme autorisés.
+- Réinitialisation sécurisée des accès.
+- Consultation des événements de sécurité.
+
+Ne jamais afficher les mots de passe des utilisateurs.
+
+### 3.7. Gestion financière du SaaS
+
+Autoriser :
+
+- Consultation des revenus de la plateforme.
+- Consultation des transactions d'abonnement.
+- Gestion des passerelles de paiement.
+- Gestion des commissions SaaS.
+- Consultation des factures d'abonnement.
+- Rapprochement des transactions.
+- Rapports financiers de la plateforme.
+- Exportation des rapports financiers SaaS.
+
+Ne pas confondre le chiffre d'affaires de la plateforme avec celui des entreprises clientes.
+
+### 3.8. Support et maintenance
+
+Autoriser :
+
+- Gestion des tickets.
+- Attribution des tickets.
+- Réponses aux demandes d'assistance.
+- Gestion des incidents.
+- Notifications globales.
+- Annonces de maintenance.
+- Consultation des journaux techniques.
+- Gestion des sauvegardes.
+- Supervision des performances.
+- Gestion des intégrations.
+- Gestion des paramètres globaux.
+
+### 3.9. Restrictions du Super-Admin
+
+Interdire par défaut :
+
+- L'encaissement des commandes d'une entreprise.
+- La modification des tarifs commerciaux d'un pressing.
+- La modification des commandes clients.
+- La modification des stocks d'un pressing.
+- La modification des écritures comptables d'une entreprise.
+- La consultation non justifiée des données personnelles des clients.
+- La modification des salaires.
+- L'utilisation silencieuse d'un compte entreprise.
+
+Créer un mécanisme d'assistance exceptionnel avec :
+
+- Motif obligatoire.
+- Ticket d'assistance associé.
+- Autorisation appropriée.
+- Durée limitée.
+- Périmètre précis.
+- Lecture seule par défaut.
+- Bannière visible pendant la session.
+- Journalisation intégrale.
+- Révocation immédiate.
+
+---
+
+## 4. Rôle PRESSING_ADMIN
+
+### 4.1. Responsabilité
+
+L'Admin Pressing est le propriétaire, le directeur ou l'administrateur autorisé d'une entreprise.
+
+Il dispose des permissions administratives nécessaires uniquement dans son entreprise et dans les agences auxquelles il a accès.
+
+Il ne possède aucun privilège d'administration globale du SaaS.
+
+### 4.2. Tableau de bord entreprise
+
+Afficher :
+
+- Commandes du jour.
+- Commandes de la semaine.
+- Commandes du mois.
+- Chiffre d'affaires.
+- Recettes.
+- Dépenses.
+- Bénéfices selon les données comptables disponibles.
+- Paiements reçus.
+- Créances clients.
+- Commandes en retard.
+- Commandes prêtes.
+- Commandes livrées.
+- Articles traités.
+- Clients actifs.
+- Nouveaux clients.
+- Performance des employés.
+- Performance des agences.
+- Alertes de stock.
+- État des caisses.
+- Évolution des ventes.
+- Échéance de l'abonnement.
+
+### 4.3. Gestion de l'entreprise
+
+Autoriser :
+
+- Modification du nom commercial.
+- Configuration du logo.
+- Informations légales.
+- Contacts.
+- Adresse.
+- Géolocalisation.
+- Horaires d'ouverture.
+- Configuration des agences.
+- Configuration des devises autorisées.
+- Configuration des taxes.
+- Configuration des reçus.
+- Configuration des factures.
+- Personnalisation des notifications.
+- Configuration des délais de traitement.
+- Configuration des services.
+- Paramètres de livraison.
+- Paramètres de fidélité.
+
+### 4.4. Gestion des gestionnaires
+
+Autoriser :
+
+- Création des comptes gestionnaires.
+- Invitation des gestionnaires.
+- Attribution des agences.
+- Attribution des permissions.
+- Création de profils de permissions personnalisés.
+- Modification des autorisations.
+- Activation et désactivation des comptes.
+- Révocation des sessions.
+- Consultation de l'historique des connexions.
+- Consultation des actions réalisées.
+- Configuration des horaires d'accès.
+- Configuration des limites financières.
+- Attribution de permissions temporaires.
+
+Interdire :
+
+- La création d'un Super-Admin.
+- L'attribution de permissions globales.
+- L'accès aux gestionnaires d'une autre entreprise.
+- L'attribution d'une permission que l'administrateur ne possède pas ou ne peut pas déléguer.
+- La suppression du dernier propriétaire actif.
+
+### 4.5. Gestion des commandes
+
+Autoriser :
+
+- Création des commandes.
+- Consultation des commandes.
+- Modification des commandes selon leur statut.
+- Validation.
+- Affectation à un gestionnaire.
+- Affectation à une agence.
+- Modification des dates de restitution.
+- Gestion des priorités.
+- Gestion des commandes express.
+- Application des remises.
+- Validation des annulations.
+- Gestion des réclamations.
+- Consultation des photographies.
+- Consultation de l'historique.
+- Réimpression des reçus.
+- Gestion des codes QR.
+- Exportation des commandes.
+- Gestion des commandes en retard.
+- Gestion des commandes non récupérées.
+
+Ne pas autoriser la suppression physique d'une commande validée ou financièrement enregistrée.
+
+Utiliser des mécanismes d'annulation, d'archivage et de contrepassation lorsque nécessaire.
+
+### 4.6. Gestion des traitements
+
+Autoriser :
+
+- Réception des vêtements.
+- Identification des articles.
+- Photographies avant traitement.
+- Enregistrement des défauts.
+- Enregistrement des taches.
+- Tri.
+- Lavage.
+- Nettoyage à sec.
+- Séchage.
+- Repassage.
+- Détachage.
+- Emballage.
+- Contrôle qualité.
+- Photographies après traitement.
+- Validation de fin de traitement.
+- Gestion des reprises.
+- Affectation aux employés.
+- Gestion du tableau Kanban.
+- Consultation des temps de traitement.
+
+### 4.7. Gestion des clients
+
+Autoriser :
+
+- Création des clients.
+- Modification des clients.
+- Consultation des profils.
+- Historique des commandes.
+- Historique des paiements.
+- Gestion des créances.
+- Gestion des catégories.
+- Gestion de la fidélité.
+- Gestion des points.
+- Gestion des clients VIP.
+- Gestion des réclamations.
+- Gestion des consentements.
+- Exportation autorisée des données clients.
+
+### 4.8. Gestion des articles et tarifs
+
+Autoriser :
+
+- Création des catégories.
+- Création des articles.
+- Création des services.
+- Modification des prix.
+- Configuration des tarifs par agence.
+- Configuration des tarifs express.
+- Configuration des tarifs au kilogramme.
+- Configuration des tarifs à la pièce.
+- Gestion des promotions.
+- Configuration des remises maximales.
+- Archivage des services.
+- Historique des modifications tarifaires.
+
+### 4.9. Gestion financière
+
+Autoriser :
+
+- Gestion des caisses.
+- Ouverture des caisses.
+- Fermeture des caisses.
+- Consultation des sessions.
+- Encaissements.
+- Paiements partiels.
+- Paiements différés.
+- Gestion des créances.
+- Gestion des remboursements.
+- Gestion des dépenses.
+- Gestion des recettes.
+- Gestion des factures.
+- Gestion des reçus.
+- Gestion des avoirs.
+- Rapprochement des paiements.
+- Consultation des écarts de caisse.
+- Validation des opérations sensibles.
+- Rapports financiers.
+- Exportation comptable.
+
+Les opérations sensibles doivent respecter les règles de validation, les plafonds et les exigences de traçabilité.
+
+### 4.10. Gestion comptable
+
+Autoriser :
+
+- Plan comptable.
+- Journaux comptables.
+- Écritures comptables.
+- Grand livre.
+- Balance générale.
+- Bilan.
+- Compte de résultat.
+- Gestion des charges.
+- Gestion des produits.
+- Gestion des créances.
+- Gestion des dettes.
+- Gestion des immobilisations.
+- Gestion des périodes comptables.
+- Clôture des périodes.
+- Exportation des états financiers.
+
+Adapter la comptabilité au référentiel applicable, notamment SYSCOHADA dans les pays concernés.
+
+### 4.11. Gestion des stocks
+
+Autoriser :
+
+- Gestion des produits consommables.
+- Gestion des détergents.
+- Gestion des emballages.
+- Gestion des cintres.
+- Gestion des fournisseurs.
+- Entrées de stock.
+- Sorties de stock.
+- Transferts entre agences.
+- Inventaires.
+- Ajustements.
+- Gestion des seuils.
+- Valorisation des stocks.
+- Historique des mouvements.
+- Gestion des achats.
+
+### 4.12. Gestion du personnel
+
+Autoriser :
+
+- Création des employés.
+- Gestion des postes.
+- Gestion des contrats.
+- Gestion des horaires.
+- Gestion des présences.
+- Gestion des absences.
+- Gestion des congés.
+- Gestion des salaires.
+- Gestion des commissions.
+- Gestion des primes.
+- Suivi des performances.
+
+### 4.13. Gestion des livraisons
+
+Autoriser :
+
+- Planification des collectes.
+- Planification des livraisons.
+- Attribution des livreurs.
+- Gestion des zones.
+- Configuration des frais.
+- Consultation des itinéraires.
+- Suivi des statuts.
+- Gestion des preuves de livraison.
+- Gestion des incidents.
+- Historique des livraisons.
+
+### 4.14. Gestion de l'abonnement
+
+Autoriser :
+
+- Consultation du forfait actuel.
+- Consultation des modules disponibles.
+- Achat de modules supplémentaires.
+- Changement de forfait.
+- Renouvellement.
+- Paiement des abonnements.
+- Consultation des factures SaaS.
+- Consultation des quotas.
+- Consultation de l'historique des abonnements.
+
+### 4.15. Restrictions de l'Admin Pressing
+
+Interdire :
+
+- L'accès aux données d'une autre entreprise.
+- La modification des tarifs SaaS globaux.
+- La modification des forfaits de la plateforme.
+- La création de Super-Admins.
+- La modification des paramètres techniques globaux.
+- L'accès aux sauvegardes globales.
+- L'accès aux secrets techniques de la plateforme.
+- Le contournement des restrictions d'abonnement.
+
+---
+
+## 5. Rôle PRESSING_MANAGER
+
+### 5.1. Responsabilité
+
+Le Gestionnaire Pressing est chargé des opérations quotidiennes autorisées par l'Admin Pressing.
+
+Ses droits sont configurables individuellement.
+
+Il ne doit jamais disposer automatiquement des mêmes permissions que l'Admin Pressing.
+
+### 5.2. Tableau de bord gestionnaire
+
+Afficher uniquement les informations autorisées :
+
+- Commandes enregistrées.
+- Commandes à traiter.
+- Commandes prêtes.
+- Commandes en retard.
+- Tâches assignées.
+- Clients récents.
+- Articles à traiter.
+- Livraisons assignées.
+- Notifications.
+- Objectifs opérationnels.
+- Activité personnelle.
+- État de sa caisse si autorisé.
+
+Ne pas afficher par défaut :
+
+- Chiffre d'affaires global.
+- Bénéfices de l'entreprise.
+- Marges commerciales.
+- Salaires des employés.
+- Solde bancaire.
+- Comptabilité générale.
+- Revenus des autres agences.
+
+### 5.3. Permissions opérationnelles par défaut
+
+Autoriser dans son périmètre :
+
+- Rechercher un client.
+- Enregistrer un nouveau client.
+- Consulter les informations nécessaires au traitement.
+- Créer une commande.
+- Ajouter des vêtements.
+- Sélectionner les prestations.
+- Consulter les tarifs.
+- Enregistrer les quantités.
+- Photographier les vêtements.
+- Enregistrer les défauts.
+- Ajouter des observations.
+- Générer un numéro de commande.
+- Imprimer un reçu autorisé.
+- Consulter les commandes assignées.
+- Mettre à jour les étapes de traitement autorisées.
+- Consulter ses tâches.
+- Consulter ses notifications.
+
+### 5.4. Permissions optionnelles
+
+L'Admin Pressing peut autoriser individuellement :
+
+- Modification d'une commande.
+- Consultation de toutes les commandes d'une agence.
+- Modification des informations clients.
+- Application de remises.
+- Encaissement.
+- Paiement partiel.
+- Ouverture de caisse.
+- Fermeture de caisse.
+- Consultation des mouvements de sa caisse.
+- Demande d'annulation.
+- Annulation dans des conditions définies.
+- Demande de remboursement.
+- Remboursement sous plafond.
+- Gestion des stocks.
+- Enregistrement des dépenses.
+- Gestion des livraisons.
+- Validation du contrôle qualité.
+- Consultation de rapports opérationnels.
+- Exportation limitée des données.
+- Gestion des réclamations.
+
+Toutes ces permissions doivent être désactivées par défaut lorsqu'elles présentent un risque financier ou administratif.
+
+### 5.5. Interdictions absolues du Gestionnaire
+
+Interdire :
+
+- Création d'un Super-Admin.
+- Création d'un Admin Pressing.
+- Modification de son propre rôle.
+- Attribution de permissions.
+- Modification des paramètres de sécurité.
+- Modification des tarifs de référence.
+- Modification des abonnements.
+- Accès aux autres entreprises.
+- Accès aux agences non autorisées.
+- Accès aux données salariales.
+- Accès à la comptabilité générale.
+- Accès aux bénéfices et marges confidentiels.
+- Suppression physique des commandes.
+- Suppression des transactions financières.
+- Modification des écritures comptables validées.
+- Suppression des journaux d'audit.
+- Contournement des validations administratives.
+
+---
+
+## 6. Système RBAC et contrôle contextuel ABAC
+
+Implémenter un système hybride :
+
+RBAC : permissions basées sur les rôles.
+
+ABAC : permissions conditionnées par les attributs et le contexte.
+
+Une autorisation dépend de :
+
+- L'identité de l'utilisateur.
+- Son statut.
+- Son rôle.
+- Son entreprise.
+- Son agence.
+- Son appartenance active.
+- Son abonnement.
+- Ses modules actifs.
+- Ses permissions explicites.
+- Ses restrictions individuelles.
+- Le propriétaire de la ressource.
+- Le statut de la ressource.
+- Le montant de l'opération.
+- L'heure de l'opération.
+- Les validations requises.
+
+Appliquer le principe DENY BY DEFAULT.
+
+Toute action non explicitement autorisée est interdite.
+
+Une interdiction explicite doit prévaloir sur une autorisation.
+
+---
+
+## 7. Catalogue granulaire des permissions
+
+Créer des permissions atomiques et non de simples permissions générales par module.
+
+### Entreprises
+
+- platform.organizations.view
+- platform.organizations.create
+- platform.organizations.update
+- platform.organizations.suspend
+- platform.organizations.activate
+- platform.organizations.archive
+
+### Administration entreprise
+
+- organization.settings.view
+- organization.settings.update
+- organization.branding.update
+- organization.branches.view
+- organization.branches.create
+- organization.branches.update
+
+### Utilisateurs
+
+- users.view
+- users.invite
+- users.create_manager
+- users.update_manager
+- users.activate
+- users.deactivate
+- users.revoke_sessions
+- users.assign_branch
+- users.assign_permissions
+- users.view_activity
+
+### Commandes
+
+- orders.view_own
+- orders.view_assigned
+- orders.view_branch
+- orders.view_all
+- orders.create
+- orders.update_draft
+- orders.update_confirmed
+- orders.assign
+- orders.change_priority
+- orders.change_deadline
+- orders.request_cancellation
+- orders.approve_cancellation
+- orders.cancel
+- orders.archive
+- orders.print_receipt
+- orders.export
+
+### Vêtements
+
+- garments.view
+- garments.create
+- garments.update
+- garments.capture_photo
+- garments.view_photo
+- garments.record_defect
+- garments.record_stain
+- garments.generate_label
+
+### Atelier
+
+- production.view
+- production.receive
+- production.sort
+- production.wash
+- production.dry_clean
+- production.dry
+- production.iron
+- production.package
+- production.quality_check
+- production.mark_ready
+- production.request_rework
+- production.assign_employee
+
+### Clients
+
+- customers.view
+- customers.create
+- customers.update
+- customers.archive
+- customers.view_history
+- customers.view_debts
+- customers.manage_loyalty
+- customers.export
+
+### Tarifs
+
+- pricing.view
+- pricing.create
+- pricing.update
+- pricing.archive
+- pricing.manage_promotions
+- discounts.apply
+- discounts.approve
+
+### Paiements
+
+- payments.view_own
+- payments.view_branch
+- payments.view_all
+- payments.create
+- payments.receive_partial
+- payments.verify
+- payments.request_refund
+- payments.approve_refund
+- payments.refund
+- payments.reconcile
+
+### Caisse
+
+- cash.view_own
+- cash.view_branch
+- cash.view_all
+- cash.open
+- cash.close
+- cash.receive
+- cash.disburse
+- cash.transfer
+- cash.view_discrepancies
+- cash.approve_adjustment
+
+### Facturation
+
+- invoices.view
+- invoices.create
+- invoices.issue
+- invoices.print
+- invoices.export
+- invoices.request_credit_note
+- invoices.approve_credit_note
+
+### Dépenses
+
+- expenses.view
+- expenses.create
+- expenses.request_approval
+- expenses.approve
+- expenses.reject
+- expenses.export
+
+### Stocks
+
+- inventory.view
+- inventory.receive
+- inventory.issue
+- inventory.transfer
+- inventory.count
+- inventory.request_adjustment
+- inventory.approve_adjustment
+- inventory.view_cost
+- inventory.export
+
+### Personnel
+
+- employees.view
+- employees.create
+- employees.update
+- employees.manage_attendance
+- employees.view_performance
+- employees.view_salary
+- employees.manage_payroll
+
+### Comptabilité
+
+- accounting.view
+- accounting.create_entry
+- accounting.post_entry
+- accounting.reverse_entry
+- accounting.close_period
+- accounting.view_balance_sheet
+- accounting.view_income_statement
+- accounting.export
+
+### Livraisons
+
+- deliveries.view_assigned
+- deliveries.view_branch
+- deliveries.view_all
+- deliveries.create
+- deliveries.assign
+- deliveries.update_status
+- deliveries.capture_proof
+- deliveries.confirm
+
+### Rapports
+
+- reports.view_operational
+- reports.view_own_activity
+- reports.view_branch
+- reports.view_revenue
+- reports.view_profit
+- reports.view_financial
+- reports.export
+
+### Sécurité
+
+- audit.view_organization
+- audit.view_platform
+- security.manage_sessions
+- security.manage_policies
+
+### Abonnements
+
+- subscriptions.view_own
+- subscriptions.renew
+- subscriptions.change_plan
+- subscriptions.purchase_module
+- platform.subscriptions.manage
+- platform.plans.manage
+
+Centraliser ce catalogue dans un registre de permissions versionné.
+
+Créer les permissions par migration ou commande Django idempotente.
+
+Ne pas disperser des chaînes de permissions non documentées dans le code.
+
+---
+
+## 8. Modèles de base de données
+
+Créer ou adapter les modèles suivants.
+
+### User
+
+- id
+- username
+- email
+- phone
+- password
+- full_name
+- is_active
+- email_verified_at
+- phone_verified_at
+- last_login
+- created_at
+- updated_at
+
+### Organization
+
+- id
+- name
+- slug
+- status
+- created_at
+- updated_at
+
+### Branch
+
+- id
+- organization_id
+- name
+- address
+- status
+- created_at
+
+### Role
+
+- id
+- code
+- name
+- description
+- scope_type
+- is_system_role
+- organization_id nullable
+- is_active
+
+### Permission
+
+- id
+- code unique
+- name
+- description
+- module
+- action
+- risk_level
+- is_delegable
+- is_active
+
+### RolePermission
+
+- id
+- role_id
+- permission_id
+- effect
+- created_at
+
+### OrganizationMembership
+
+- id
+- user_id
+- organization_id
+- role_id
+- status
+- invited_by
+- joined_at
+- revoked_at
+
+### BranchAssignment
+
+- id
+- membership_id
+- branch_id
+- is_active
+- created_at
+
+### PermissionProfile
+
+- id
+- organization_id
+- name
+- description
+- is_active
+
+### PermissionProfileItem
+
+- id
+- profile_id
+- permission_id
+- effect
+
+### MembershipPermissionProfile
+
+- id
+- membership_id
+- profile_id
+
+### UserPermissionOverride
+
+- id
+- membership_id
+- permission_id
+- effect
+- scope_type
+- branch_id nullable
+- valid_from
+- valid_until
+- granted_by
+- reason
+- created_at
+
+### PermissionConstraint
+
+- id
+- membership_id
+- permission_id
+- constraint_type
+- constraint_value
+- currency
+- branch_id nullable
+- is_active
+
+### ApprovalRequest
+
+- id
+- organization_id
+- branch_id
+- requested_by
+- operation_type
+- resource_type
+- resource_id
+- operation_payload
+- operation_hash
+- amount
+- currency
+- status
+- reason
+- reviewed_by
+- reviewed_at
+- expires_at
+- executed_at
+- created_at
+
+### AuditLog
+
+- id
+- organization_id nullable
+- branch_id nullable
+- actor_id
+- actor_role
+- action
+- resource_type
+- resource_id
+- old_values
+- new_values
+- ip_address
+- user_agent
+- request_id
+- result
+- reason
+- created_at
+
+### SupportAccessSession
+
+- id
+- super_admin_id
+- organization_id
+- ticket_id
+- approved_by
+- reason
+- allowed_permissions
+- starts_at
+- expires_at
+- revoked_at
+- status
+
+Ajouter les contraintes d'unicité, index, clés étrangères et validations nécessaires.
+
+Utiliser des UUID lorsque compatible avec l'architecture existante.
+
+Utiliser DecimalField pour les montants financiers.
+
+Garantir la cohérence entre entreprise, agence, appartenance, rôle et ressources.
+
+Ne jamais accepter une relation entre deux entreprises différentes.
+
+---
+
+## 9. Isolation multi-tenant stricte
+
+Toutes les tables métier doivent être rattachées à une entreprise, directement ou par une relation contrôlée.
+
+Les données concernées comprennent :
+
+- Commandes.
+- Clients.
+- Articles.
+- Tarifs.
+- Paiements.
+- Factures.
+- Caisses.
+- Stocks.
+- Employés.
+- Livraisons.
+- Rapports.
+- Documents.
+- Photographies.
+- Notifications.
+
+Chaque requête métier doit être filtrée par l'entreprise active et le périmètre autorisé.
+
+Ne jamais utiliser uniquement un identifiant de ressource fourni par l'utilisateur.
+
+Exemple de comportement :
+
+Un gestionnaire de l'entreprise A tente d'accéder à une commande de l'entreprise B en modifiant l'identifiant dans l'URL.
+
+Le système doit refuser l'accès, même si l'identifiant existe.
+
+Appliquer les contrôles à :
+
+- Toutes les vues Django.
+- Toutes les API.
+- Toutes les requêtes AJAX.
+- Toutes les recherches.
+- Tous les exports.
+- Toutes les impressions.
+- Tous les fichiers.
+- Tous les traitements asynchrones.
+- Toutes les notifications.
+- Toutes les connexions WebSocket.
+
+Ne pas considérer les UUID comme un mécanisme de sécurité.
+
+---
+
+## 10. Moteur centralisé d'autorisation
+
+Créer un service d'autorisation centralisé.
+
+Fonctions attendues :
+
+- has_permission(user, permission, context)
+- require_permission(user, permission, context)
+- get_effective_permissions(user, organization)
+- get_accessible_branches(user, organization)
+- get_accessible_queryset(user, queryset, permission)
+- can_delegate_permission(actor, target, permission)
+- check_financial_limit(user, operation, amount)
+- requires_approval(user, operation, context)
+
+Ordre de vérification :
+
+1. Vérifier l'authentification.
+2. Vérifier que le compte est actif.
+3. Vérifier la session.
+4. Vérifier le périmètre plateforme ou entreprise.
+5. Vérifier l'appartenance à l'entreprise.
+6. Vérifier le statut de l'entreprise.
+7. Vérifier les droits liés à l'abonnement.
+8. Vérifier le module métier.
+9. Vérifier l'agence autorisée.
+10. Vérifier les interdictions explicites.
+11. Vérifier les permissions du rôle.
+12. Vérifier les profils personnalisés.
+13. Vérifier les permissions individuelles.
+14. Vérifier les restrictions contextuelles.
+15. Vérifier les plafonds financiers.
+16. Vérifier les validations requises.
+17. Autoriser ou refuser.
+18. Journaliser les opérations sensibles.
+
+Une autorisation doit être vérifiée à nouveau au moment de l'exécution réelle de l'opération.
+
+---
+
+## 11. Gestion des périmètres d'accès
+
+Créer les périmètres suivants :
+
+- PLATFORM : administration globale autorisée.
+- ORGANIZATION : toutes les ressources autorisées d'une entreprise.
+- BRANCH : ressources des agences attribuées.
+- ASSIGNED : ressources assignées à l'utilisateur.
+- OWN : ressources propres à l'utilisateur.
+
+La possession d'une permission ne doit jamais permettre de dépasser le périmètre autorisé.
+
+Exemple :
+
+Un gestionnaire possède orders.view_branch et est affecté uniquement à l'agence Cocody.
+
+Il ne peut pas consulter les commandes de l'agence Yopougon.
+
+---
+
+## 12. Restrictions financières configurables
+
+Permettre à l'Admin Pressing de configurer pour chaque gestionnaire :
+
+- Remise maximale en pourcentage.
+- Remise maximale en montant.
+- Montant maximal de remboursement.
+- Montant maximal de dépense.
+- Montant maximal de décaissement.
+- Plafond journalier d'opérations.
+- Autorisation de paiement différé.
+- Autorisation de modification du montant.
+- Autorisation de clôture de caisse.
+
+Exemple de configuration :
+
+- Remise maximale : 5 %.
+- Remboursement maximal : 5 000 FCFA.
+- Dépense maximale : 10 000 FCFA.
+- Décaissement maximal : 20 000 FCFA.
+
+Ces valeurs sont des exemples configurables et non des règles imposées.
+
+Les plafonds doivent être vérifiés côté serveur, y compris lors de requêtes concurrentes.
+
+Interdire le fractionnement artificiel d'une opération pour contourner les plafonds.
+
+---
+
+## 13. Workflow de validation administrative
+
+Créer un système d'approbation pour les opérations sensibles.
+
+Opérations concernées :
+
+- Remise exceptionnelle.
+- Annulation de commande confirmée.
+- Remboursement.
+- Dépense importante.
+- Ajustement de stock.
+- Correction de caisse.
+- Modification d'une facture émise.
+- Avoir.
+- Modification exceptionnelle d'un tarif.
+- Transfert de caisse.
+
+États :
+
+- Brouillon.
+- En attente.
+- Approuvée.
+- Rejetée.
+- Expirée.
+- Exécutée.
+- Annulée.
+
+Workflow :
+
+1. Le gestionnaire initie une demande.
+2. Le système vérifie ses permissions.
+3. La demande est enregistrée.
+4. L'Admin Pressing reçoit une notification.
+5. Il consulte les détails et le motif.
+6. Il approuve ou rejette.
+7. Le système vérifie de nouveau les conditions.
+8. L'opération autorisée est exécutée une seule fois.
+9. Le résultat est journalisé.
+10. Le gestionnaire reçoit une notification.
+
+Interdire l'auto-approbation des opérations soumises à une séparation des responsabilités.
+
+Une modification du montant ou du contenu d'une demande après approbation doit invalider l'approbation.
+
+---
+
+## 14. Interface de gestion des rôles et permissions
+
+Créer une page professionnelle :
+
+Paramètres → Utilisateurs et accès → Rôles et permissions.
+
+Design Bootstrap 5 responsive.
+
+Afficher :
+
+- Liste des gestionnaires.
+- Photo ou avatar.
+- Nom complet.
+- Identifiant.
+- Téléphone.
+- E-mail.
+- Rôle.
+- Agences attribuées.
+- Statut.
+- Dernière connexion.
+- Nombre de permissions.
+- Date de création.
+- Actions autorisées.
+
+Créer un formulaire de configuration avec des onglets :
+
+1. Informations personnelles.
+2. Rôle.
+3. Agences.
+4. Permissions.
+5. Restrictions financières.
+6. Horaires d'accès.
+7. Sécurité.
+8. Historique.
+
+Pour les permissions, afficher une matrice par module :
+
+- Consulter.
+- Créer.
+- Modifier.
+- Annuler.
+- Valider.
+- Imprimer.
+- Exporter.
+- Administrer.
+
+N'afficher que les actions réellement applicables au module.
+
+Utiliser :
+
+- Cases à cocher.
+- Interrupteurs.
+- Recherche de permissions.
+- Filtres par module.
+- Sélection multiple.
+- Indicateurs de permissions héritées.
+- Indicateurs de permissions personnalisées.
+- Indicateurs d'interdiction explicite.
+- Indicateurs de permissions sensibles.
+- Aperçu des permissions effectives.
+
+Ne pas permettre l'activation d'une permission non délégable.
+
+Afficher un avertissement avant toute attribution de droits sensibles.
+
+---
+
+## 15. Profils de permissions prédéfinis
+
+Créer des profils opérationnels configurables pour le rôle PRESSING_MANAGER.
+
+### Gestionnaire réceptionniste
+
+- Clients.
+- Enregistrement des commandes.
+- Photographies.
+- Étiquettes.
+- Impression des reçus.
+- Consultation des commandes autorisées.
+
+### Gestionnaire caissier
+
+- Encaissements.
+- Paiements partiels.
+- Ouverture et fermeture de sa caisse.
+- Reçus.
+- Consultation de ses transactions.
+
+### Gestionnaire atelier
+
+- Réception des articles.
+- Tri.
+- Lavage.
+- Séchage.
+- Repassage.
+- Emballage.
+- Contrôle qualité selon autorisation.
+
+### Gestionnaire stock
+
+- Consultation des stocks.
+- Entrées.
+- Sorties.
+- Inventaires.
+- Demandes d'ajustement.
+
+### Gestionnaire livraison
+
+- Commandes assignées.
+- Collectes.
+- Livraisons.
+- Mise à jour des statuts.
+- Preuves de livraison.
+
+### Gestionnaire polyvalent
+
+- Réception.
+- Commandes.
+- Clients.
+- Atelier.
+- Caisse selon autorisation.
+- Livraison selon autorisation.
+
+Ces profils ne constituent pas de nouveaux rôles système. Ils représentent des ensembles de permissions attribuables aux gestionnaires.
+
+---
+
+## 16. Authentification et redirections
+
+Conserver les trois méthodes de connexion :
+
+- Adresse e-mail.
+- Numéro de téléphone.
+- Login.
+
+Chaque méthode utilise le même système sécurisé d'authentification.
+
+Après connexion :
+
+SUPER_ADMIN :
+
+/super-admin/dashboard/
+
+PRESSING_ADMIN :
+
+/entreprise/dashboard/
+
+PRESSING_MANAGER :
+
+/gestionnaire/dashboard/
+
+Si un utilisateur possède plusieurs appartenances autorisées, afficher un sélecteur d'entreprise.
+
+Si plusieurs agences lui sont attribuées, permettre la sélection d'une agence autorisée.
+
+Vérifier chaque changement de contexte côté serveur.
+
+Ne jamais déterminer le rôle à partir d'une valeur envoyée librement par le navigateur.
+
+---
+
+## 17. Menus dynamiques
+
+Créer un moteur de navigation dynamique.
+
+Le menu doit être généré selon :
+
+- Le rôle.
+- Les permissions effectives.
+- L'entreprise active.
+- L'agence active.
+- Les modules activés.
+- L'abonnement.
+- Les restrictions individuelles.
+
+### Menu Super-Admin
+
+- Tableau de bord.
+- Entreprises.
+- Abonnements.
+- Modules métiers.
+- Utilisateurs.
+- Paiements et revenus.
+- Support.
+- Notifications.
+- Rapports.
+- Sécurité.
+- Sauvegardes.
+- Paramètres plateforme.
+
+### Menu Admin Pressing
+
+- Tableau de bord.
+- Commandes.
+- Clients.
+- Articles et tarifs.
+- Atelier.
+- Livraisons.
+- Caisse.
+- Facturation.
+- Dépenses.
+- Comptabilité.
+- Stocks.
+- Fournisseurs.
+- Personnel.
+- Agences.
+- Gestionnaires.
+- Rôles et permissions.
+- Rapports.
+- Abonnement.
+- Paramètres.
+
+### Menu Gestionnaire
+
+Afficher uniquement les modules autorisés :
+
+- Tableau de bord.
+- Mes tâches.
+- Commandes.
+- Clients.
+- Atelier.
+- Caisse.
+- Stocks.
+- Livraisons.
+- Notifications.
+- Mon profil.
+
+Les menus et boutons masqués ne remplacent jamais les contrôles serveur.
+
+---
+
+## 18. Sécurisation Django
+
+Utiliser les mécanismes Django adaptés :
+
+- Middleware d'authentification.
+- Middleware de contexte entreprise.
+- Décorateurs de permissions.
+- Mixins pour les vues orientées objet.
+- Services d'autorisation.
+- QuerySets filtrés.
+- Formulaires validés côté serveur.
+- Protection CSRF.
+- Validation des entrées.
+- Transactions atomiques.
+- Verrouillage des opérations financières concurrentes.
+
+Si Django REST Framework est présent, implémenter également :
+
+- Classes de permissions personnalisées.
+- Permissions au niveau des objets.
+- Filtrage des QuerySets.
+- Validation des serializers.
+- Contrôles sur les actions personnalisées.
+
+Ne pas utiliser is_staff ou is_superuser comme unique système d'autorisation métier.
+
+Le Super-Admin SaaS doit être distinct du compte technique Django disposant de tous les privilèges.
+
+Les comptes techniques privilégiés doivent être réservés aux opérations d'urgence et protégés.
+
+---
+
+## 19. Gestion des sessions
+
+Implémenter :
+
+- Révocation immédiate des accès.
+- Expiration des sessions.
+- Déconnexion à distance.
+- Liste des appareils connectés.
+- Historique des connexions.
+- Détection des tentatives répétées.
+- Limitation des tentatives de connexion.
+- Authentification multifacteur obligatoire pour les Super-Admins.
+- Authentification multifacteur pour les administrateurs d'entreprise.
+- Réauthentification pour les opérations sensibles.
+
+Lorsqu'une permission est retirée, elle ne doit plus être utilisable lors de la prochaine requête autorisée.
+
+Invalider les caches de permissions après chaque modification.
+
+---
+
+## 20. Journalisation et audit
+
+Journaliser notamment :
+
+- Connexions.
+- Échecs de connexion.
+- Création des utilisateurs.
+- Modification des rôles.
+- Attribution des permissions.
+- Retrait des permissions.
+- Création des commandes.
+- Modification des commandes.
+- Annulation.
+- Encaissements.
+- Remboursements.
+- Remises.
+- Mouvements de stock.
+- Ajustements de caisse.
+- Exportations.
+- Accès d'assistance.
+- Tentatives d'accès interdites.
+
+Chaque événement sensible doit contenir :
+
+- Auteur.
+- Date et heure.
+- Entreprise.
+- Agence.
+- Action.
+- Ressource.
+- Ancienne valeur pertinente.
+- Nouvelle valeur pertinente.
+- Motif.
+- Résultat.
+- Identifiant de requête.
+
+Protéger les journaux contre la modification et la suppression non autorisées.
+
+Ne jamais journaliser les mots de passe, secrets, jetons complets ou informations bancaires sensibles.
+
+---
+
+## 21. Gestion des erreurs et expérience utilisateur
+
+Créer des pages professionnelles :
+
+- 403 : accès interdit.
+- 404 : ressource introuvable.
+- 401 : authentification requise pour les API.
+- Session expirée.
+- Compte suspendu.
+- Entreprise suspendue.
+- Module non activé.
+- Abonnement expiré.
+- Validation administrative requise.
+
+Exemples de messages :
+
+« Vous ne disposez pas de l'autorisation nécessaire pour effectuer cette opération. »
+
+« Cette opération nécessite la validation de votre administrateur. »
+
+« Le montant dépasse votre plafond autorisé. »
+
+« Cette agence ne fait pas partie de votre périmètre d'accès. »
+
+Pour une ressource appartenant à une autre entreprise, éviter de révéler son existence.
+
+Ajouter des notifications toast Bootstrap adaptées.
+
+---
+
+## 22. Gestion des abonnements et permissions
+
+Une permission utilisateur ne doit pas permettre l'accès à un module non inclus dans l'abonnement de l'entreprise.
+
+Le moteur doit vérifier simultanément :
+
+- Permission utilisateur.
+- Module actif.
+- Abonnement valide.
+- Quotas.
+- Restrictions du forfait.
+
+En cas d'expiration, appliquer une politique documentée de lecture seule, de renouvellement et d'exportation selon les conditions commerciales.
+
+Ne jamais supprimer automatiquement les données d'une entreprise à cause d'un abonnement expiré.
+
+---
+
+## 23. Design UI/UX
+
+Respecter l'identité graphique existante de GESTION PRO AFRICA :
+
+- Bleu nuit : #101D3A.
+- Bleu royal : #2563EB.
+- Or : #F0B429.
+- Fond clair : #F8FAFC.
+- Vert : #16A34A.
+- Rouge : #DC2626.
+
+Utiliser le logo existant.
+
+Conserver les polices et composants visuels déjà adoptés dans le projet.
+
+Utiliser des icônes professionnelles cohérentes et correctement licenciées.
+
+Créer :
+
+- Trois tableaux de bord distincts.
+- Une interface de gestion des utilisateurs.
+- Une matrice des permissions.
+- Une interface de gestion des agences.
+- Une interface de restrictions financières.
+- Une interface de validation des demandes.
+- Une interface d'audit.
+- Des formulaires responsives.
+- Des états vides.
+- Des états de chargement.
+- Des messages d'erreur.
+- Des modales de confirmation.
+
+---
+
+## 24. Tests de sécurité obligatoires
+
+Écrire et exécuter des tests automatisés pour vérifier :
+
+1. Un gestionnaire ne peut pas devenir Super-Admin.
+2. Un gestionnaire ne peut pas modifier ses permissions.
+3. Un gestionnaire ne peut pas accéder à une autre entreprise.
+4. Un gestionnaire ne peut pas accéder à une agence non attribuée.
+5. Un administrateur ne peut pas créer un Super-Admin.
+6. Un administrateur ne peut pas gérer une autre entreprise.
+7. Un utilisateur ne peut pas accéder à un module non souscrit.
+8. Une URL modifiée manuellement ne contourne pas les permissions.
+9. Une requête AJAX directe ne contourne pas les permissions.
+10. Une API ne divulgue pas les données d'un autre tenant.
+11. Un export respecte le périmètre autorisé.
+12. Une photographie privée respecte les permissions.
+13. Un gestionnaire ne dépasse pas son plafond de remise.
+14. Un gestionnaire ne dépasse pas son plafond de remboursement.
+15. Une demande non approuvée ne peut pas être exécutée.
+16. Une demande approuvée ne peut pas être exécutée deux fois.
+17. Une modification de permission prend effet correctement.
+18. Une session révoquée ne fonctionne plus.
+19. Une entreprise suspendue ne peut pas effectuer d'opérations interdites.
+20. Les journaux d'audit ne peuvent pas être supprimés par un gestionnaire.
+21. Une interdiction explicite prévaut sur une permission héritée.
+22. Une permission temporaire expire correctement.
+23. Une opération concurrente ne contourne pas les plafonds financiers.
+24. Un administrateur ne peut pas supprimer le dernier propriétaire actif.
+25. Un accès d'assistance expiré est refusé.
+26. Un utilisateur ne peut pas approuver sa propre demande lorsque la séparation des responsabilités est requise.
+27. Un changement de contexte entreprise ne conserve pas les anciennes permissions.
+28. Les tâches asynchrones respectent l'isolation des entreprises.
+29. Les menus correspondent aux permissions effectives.
+30. Les opérations financières validées restent traçables.
+
+Créer au minimum deux entreprises de test, plusieurs agences et plusieurs utilisateurs possédant des droits différents.
+
+---
+
+## 25. Structure technique recommandée
+
+Adapter les fichiers au projet existant.
+
+Créer si nécessaire :
+
+- apps/accounts/
+- apps/organizations/
+- apps/access_control/
+- apps/approvals/
+- apps/audit/
+- apps/subscriptions/
+
+Dans access_control :
+
+- models.py
+- registry.py
+- policies.py
+- services.py
+- selectors.py
+- decorators.py
+- mixins.py
+- middleware.py
+- forms.py
+- views.py
+- urls.py
+- admin.py
+- tests/
+- management/commands/
+
+Créer les commandes de gestion nécessaires pour :
+
+- Initialiser les rôles.
+- Synchroniser les permissions.
+- Vérifier les incohérences.
+- Auditer les attributions.
+- Révoquer les accès expirés.
+
+Les commandes doivent être idempotentes et ne jamais supprimer des permissions personnalisées sans procédure explicite.
+
+---
+
+## 26. Livrables obligatoires
+
+Fournir :
+
+- Code source complet.
+- Modèles Django.
+- Migrations.
+- Registre des permissions.
+- Moteur d'autorisation.
+- Middlewares.
+- Décorateurs.
+- Mixins.
+- Formulaires.
+- Vues.
+- Routes.
+- Templates Bootstrap.
+- CSS et JavaScript.
+- Tableaux de bord.
+- Matrice des permissions.
+- Gestion des validations.
+- Gestion des plafonds.
+- Gestion des agences.
+- Journaux d'audit.
+- Tests automatisés.
+- Documentation technique.
+- Documentation administrateur.
+- Guide utilisateur.
+- Commandes d'installation.
+- Procédure de déploiement.
+
+---
+
+## 27. Instructions finales impératives
+
+Ne pas produire uniquement un cahier des charges.
+
+Implémenter réellement toutes les fonctionnalités dans le projet existant.
+
+Avant toute modification :
+
+1. Auditer le code.
+2. Identifier les modèles existants.
+3. Identifier les permissions déjà implémentées.
+4. Identifier les failles d'isolation.
+5. Établir un plan de migration non destructif.
+6. Préserver les données existantes.
+7. Implémenter le moteur d'autorisation.
+8. Sécuriser les vues et API.
+9. Développer les interfaces.
+10. Exécuter les tests.
+11. Corriger les erreurs.
+12. Produire un rapport final.
+
+Ne pas utiliser de données fictives dans les interfaces de production.
+
+Ne pas créer de comptes administrateurs avec des mots de passe codés en dur.
+
+Ne pas annoncer qu'une fonctionnalité est terminée sans preuve d'implémentation et de test.
+
+Le résultat attendu est un SaaS professionnel, commercialisable, sécurisé, multi-entreprises et multi-agences, dans lequel chaque utilisateur ne peut effectuer que les opérations explicitement autorisées dans son périmètre.
+:::4. Design recommandé de la configuration des permissions
+Voici un exemple interactif de l'interface que l'Admin Pressing pourra utiliser pour configurer un gestionnaire.
+Configurer les accès
+GESTION PRO AFRICA · Pressing Pro
+Gestionnaire — Compte exemple
+
+PRESSING_MANAGER
+
+(Actif)
+
+Profil de permissions
+- Réceptionniste
+- Caissier
+- Agent atelier
+- Gestionnaire stock
+- Livreur
+- Personnalisé
+  Sélection actuelle indisponible.
+Agences autorisées
+Permissions par module   autorisations
+Module
+
+
+Restrictions financières
+
+Remise maximale
+%
+Curseur
+
+Valeur actuelle indisponible.
+
+Plage : 0-30
+
+Pas : 1
+
+Libellés de l’échelle : 0 — 0 % · 15 — 15 % · 30 — 30 %
+
+Plafond remboursement (FCFA)
+
+[Valeur du champ de saisie indisponible]
+
+Plafond dépense (FCFA)
+
+[Valeur du champ de saisie indisponible]
+
+Les permissions sensibles restent soumises aux règles de sécurité, aux validations administratives et aux restrictions du SaaS.
+
+[Copier la configuration]
+
+Prototype interactif de configuration. Aucune modification n'est enregistrée dans votre véritable SaaS.
+5. Workflow des opérations sensibles
+Gestionnaire Pressing
+
+Demande de remboursement de 15 000 FCFA
+
+Moteur de permissions
+
+Vérification du rôle, de l'agence et du plafond
+
+Plafond autorisé : 5 000 FCFA
+
+Demande de validation
+
+Notification envoyée à l'Admin Pressing
+
+Approuvée
+
+Exécution contrôlée et journalisée
+
+Rejetée
+
+Opération bloquée et motif communiqué
+
+Journal d'audit permanent
+6. Résultat attendu pour GESTION PRO AFRICA
+Caractéristique	Architecture retenue
+Rôles principaux	3
+Permissions	Plus de 100 permissions atomiques
+Profils gestionnaires	6 profils prédéfinis et personnalisables
+Isolation	Multi-tenant stricte
+Gestion multi-agences	Oui
+Permissions temporaires	Oui
+Restrictions financières	Personnalisables
+Validation administrative	Oui
+Sécurité des fichiers	Oui
+Tableaux de bord	3 interfaces distinctes
+Menus	Dynamiques selon les droits
+Contrôle serveur	Obligatoire
+Journalisation	Actions sensibles et administratives
+Authentification	Téléphone, e-mail ou login
+Architecture de sécurité	RBAC + ABAC
+Tests de sécurité	30 scénarios minimum
+
+
+Point essentiel : ne créez pas simplement trois rôles rigides avec des fonctionnalités codées en dur. Le système doit permettre à chaque Admin Pressing de personnaliser précisément les droits de chacun de ses gestionnaires, sans jamais compromettre l'isolation des entreprises ni la sécurité financière.
+
+Les plafonds financiers, profils prédéfinis et règles de validation proposés sont configurables. Le code source existant n'ayant pas été audité ici, ce prompt constitue une spécification d'implémentation et non une confirmation que ces protections sont déjà opérationnelles.
