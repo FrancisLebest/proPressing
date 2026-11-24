@@ -55,7 +55,8 @@ class AuthModuleSecurityTest {
 
         val strong = AuthInputValidator.evaluatePassword("Pressing2026@CI")
         assertTrue(strong.isAcceptable)
-        assertTrue(strong.level == PasswordStrengthLevel.STRONG || strong.level == PasswordStrengthLevel.VERY_STRONG)
+        assertEquals(5, strong.score)
+        assertEquals(PasswordStrengthLevel.VERY_STRONG, strong.level)
 
         val mismatchErrors = AuthInputValidator.validateRegistration(
             fullName = "Kouassi Yao",
