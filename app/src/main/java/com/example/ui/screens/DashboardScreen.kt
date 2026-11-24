@@ -401,12 +401,17 @@ private fun DirecteurGeneralDashboard(
             )
         }
 
-        // Signature 2x2 Vibrant Mockup KPI Grid (Screen 5 — Gestion Pro Africa)
+        // Adaptive KPI grid: 2 columns on phones/tablets, 4 on wide workspaces.
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val columns = if (maxWidth >= 1100.dp) 4 else 2
+                val gap = 10.dp
+                val tileWidth = (maxWidth - gap * (columns - 1)) / columns
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    maxItemsInEachRow = columns,
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     GPAVibrantKpiTile(
                         title = "Commandes",
@@ -415,7 +420,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiVioletStart,
                         endColor = KpiVioletEnd,
                         onClick = { onNavigateModule("orders") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_orders")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_orders")
                     )
                     GPAVibrantKpiTile(
                         title = "Clients",
@@ -424,13 +429,8 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiGreenStart,
                         endColor = KpiGreenEnd,
                         onClick = { onNavigateModule("clients") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_clients")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_clients")
                     )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
                     GPAVibrantKpiTile(
                         title = "Chiffre d'affaires",
                         value = formatMoney(globalRevenue, currency),
@@ -438,7 +438,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiGoldStart,
                         endColor = KpiGoldEnd,
                         onClick = { onNavigateModule("finance") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_revenue")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_revenue")
                     )
                     GPAVibrantKpiTile(
                         title = "Articles traités",
@@ -447,7 +447,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiCoralStart,
                         endColor = KpiCoralEnd,
                         onClick = { onNavigateModule("workshop_tracker") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_articles")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_articles")
                     )
                 }
             }
