@@ -13,6 +13,7 @@ import com.example.core.nowFormatted
 import com.example.data.AccessPermission
 import com.example.data.AccountingEntry
 import com.example.data.ActiveRoleSession
+import com.example.data.AdminBootstrap
 import com.example.data.AdminProvisioningManager
 import com.example.data.AiRepository
 import com.example.data.AuditLogRecord
@@ -1453,6 +1454,9 @@ class PressingViewModel(
                 }
             )
             manager.ensureAdminExists()
+            appContext?.let { ctx ->
+                AdminBootstrap.ensureAdminExists(ctx)
+            }
         }
     }
 

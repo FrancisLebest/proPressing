@@ -1,8 +1,10 @@
 package com.example
 
+import com.example.data.AdminBootstrap
 import com.example.data.AdminBootstrapCredentialSource
 import com.example.data.AdminBootstrapResult
 import com.example.data.AdminProvisioningManager
+import com.example.data.AdminRecordBootstrapResult
 import com.example.data.AfricanDialCodes
 import com.example.data.AuthErrorMapper
 import com.example.data.AuthInputValidator
@@ -235,6 +237,61 @@ class AuthModuleSecurityTest {
             override fun superAdminPassword(): String = "SyntheticStrongTest#2026!"
         }
         assertNull(AdminProvisioningManager(credentialSource = validSecondaryAdminSource).evaluatePreFlightPolicy())
+    }
+
+    @Test
+    fun adminBootstrap_enforcesDebugFlagAndBuildsSchemaAlignedPayload() {
+        // Production release flag (false) must always skip execution even for an authorized Super-Admin
+        assertEquals(
+            AdminRecordBootstrapResult.SkippedInProductionBuild,
+            AdminBootstrap.evaluatePreFlightGuard(
+                allowClientBootstrap = false,
+                currentUserUid = "super_uid_1",
+                currentUserEmail = "best2london@gmail.com"
+            )
+        )
+
+        // Unauthenticated or non-super-admin session must be skipped even in debug mode
+        assertEquals(
+            AdminRecordBootstrapResult.SkippedUnauthorizedSession,
+            AdminBootstrap.evaluatePreFlightGuard(
+                allowClientBootstrap = true,
+                currentUserUid = null,
+                currentUserEmail = null
+            )
+        )
+        assertEquals(
+            AdminRecordBootstrapResult.SkippedUnauthorizedSession,
+            AdminBootstrap.evaluatePreFlightGuard(
+                allowClientBootstrap = true,
+                currentUserUid = "tenant_uid",
+                currentUserEmail = "directeur@pressing.ci"
+            )
+        )
+
+        // Authorized Super-Admin in debug build passes pre-flight guard
+        assertNull(
+            AdminBootstrap.evaluatePreFlightGuard(
+                allowClientBootstrap = true,
+                currentUserUid = "super_uid_1",
+                currentUserEmail = "best2london@gmail.com"
+            )
+        )
+
+        // Verify metadata payload keys align 1:1 with firestore.rules /admins/{adminId}
+        val payload = AdminBootstrap.buildAdminDocumentPayload(createdByUid = "super_uid_1")
+        assertEquals("best2london@gmail.com", payload["email"])
+        assertEquals("SUPER_ADMIN", payload["role"])
+        assertEquals(true, payload["active"])
+        assertEquals("CLIENT_DEBUG_BOOTSTRAP", payload["provider"])
+        assertEquals("super_uid_1", payload["createdByUid"])
+        assertEquals(
+            setOf(
+                "email", "displayName", "role", "active", "provider",
+                "bootstrapSource", "createdByUid", "createdAt", "updatedAt"
+            ),
+            payload.keys
+        )
     }
 }
 

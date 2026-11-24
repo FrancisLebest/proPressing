@@ -219,9 +219,30 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "clientName", "subject", "description", "severity", "status", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Registre sécurisé des comptes Super-Admin autorisés de la plateforme Gestion Pro Africa.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "enum": ["lebest2london@gmail.com", "best2london@gmail.com"] },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN"] },
+        "active": { "type": "boolean" },
+        "provider": { "type": "string", "enum": ["EMAIL_PASSWORD", "GOOGLE", "CLIENT_DEBUG_BOOTSTRAP"] },
+        "bootstrapSource": { "type": "string" },
+        "createdByUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "displayName", "role", "active", "provider", "bootstrapSource", "createdByUid", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Registre des Super-Administrateurs plateforme (accès strictement réservé aux Super-Admins autorisés)."
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/CompanyConfig" },
       "description": "Configuration multi-tenant de l'entreprise pressing."

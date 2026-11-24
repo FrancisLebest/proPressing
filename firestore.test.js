@@ -847,4 +847,56 @@ test("Anti-privilege escalation, Cash Close Z immutability, and trackingToken im
   );
 });
 
+test("admins collection: strictly restricted to authorized Platform Super-Admins with immutable delete protection", async () => {
+  const ts = pastDate(2000);
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const regularDb = testEnv.authenticatedContext(ALICE_UID, { email: "director@pressing.ci" }).firestore();
+  const superAdminDb = testEnv.authenticatedContext("super_admin_uid", { email: "best2london@gmail.com" }).firestore();
+
+  const validAdminDoc = {
+    email: "best2london@gmail.com",
+    displayName: "Super-Admin Gestion Pro Africa",
+    role: "SUPER_ADMIN",
+    active: true,
+    provider: "CLIENT_DEBUG_BOOTSTRAP",
+    bootstrapSource: "android_debug_bootstrap",
+    createdByUid: "super_admin_uid",
+    createdAt: ts,
+    updatedAt: ts,
+  };
+
+  // Unauthenticated and regular users cannot read, list, or create in /admins
+  await assertFails(unauthDb.collection("admins").doc("best2london_gmail_com").get());
+  await assertFails(unauthDb.collection("admins").doc("best2london_gmail_com").set(validAdminDoc));
+  await assertFails(regularDb.collection("admins").doc("best2london_gmail_com").get());
+  await assertFails(regularDb.collection("admins").where("email", "==", "best2london@gmail.com").get());
+  await assertFails(regularDb.collection("admins").doc("best2london_gmail_com").set({
+    ...validAdminDoc,
+    createdByUid: ALICE_UID,
+  }));
+
+  // Authorized Super-Admin can create, read, query, and update allowed fields
+  await assertSucceeds(superAdminDb.collection("admins").doc("best2london_gmail_com").set(validAdminDoc));
+  await assertSucceeds(superAdminDb.collection("admins").doc("best2london_gmail_com").get());
+  await assertSucceeds(superAdminDb.collection("admins").where("email", "==", "best2london@gmail.com").limit(1).get());
+  await assertSucceeds(superAdminDb.collection("admins").doc("best2london_gmail_com").update({
+    displayName: "Super-Admin Principal",
+    updatedAt: pastDate(500),
+  }));
+
+  // Cannot create unauthorized email or spoof createdByUid
+  await assertFails(superAdminDb.collection("admins").doc("rogue_admin").set({
+    ...validAdminDoc,
+    email: "attacker@example.com",
+  }));
+  await assertFails(superAdminDb.collection("admins").doc("spoofed_uid").set({
+    ...validAdminDoc,
+    createdByUid: "other_uid",
+  }));
+
+  // Delete is strictly forbidden
+  await assertFails(superAdminDb.collection("admins").doc("best2london_gmail_com").delete());
+});
+
+
 
