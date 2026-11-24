@@ -278,7 +278,7 @@ object AuthInputValidator {
             else -> PasswordStrengthLevel.WEAK
         }
         return PasswordStrengthResult(
-            score = score.coerceAtMost(4),
+            score = score.coerceAtMost(5),
             level = level,
             missingRequirements = missing
         )
