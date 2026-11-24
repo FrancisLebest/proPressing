@@ -776,10 +776,13 @@ internal fun CashierCounterDashboard(
             subtitle = "Visez le QR Code du reçu client ou le code-barres de commande",
             onCodeScanned = { code ->
                 showTicketScanner = false
+                val cleaned = code.trim()
+                val extractedToken = com.example.data.QrCodeValidator.extractTrackingToken(cleaned)
                 val matched = orders.firstOrNull { ord ->
-                    ord.orderNumber.equals(code.trim(), ignoreCase = true) ||
-                        ord.id == code.trim() ||
-                        code.contains(ord.orderNumber, ignoreCase = true)
+                    ord.orderNumber.equals(cleaned, ignoreCase = true) ||
+                        (extractedToken != null && ord.trackingToken.equals(extractedToken, ignoreCase = true)) ||
+                        (ord.trackingToken.isNotBlank() && cleaned.contains(ord.trackingToken, ignoreCase = true)) ||
+                        cleaned.contains(ord.orderNumber, ignoreCase = true)
                 }
                 if (matched != null) onOpenOrder(matched.id) else onNavigateModule("orders")
             },
@@ -840,8 +843,10 @@ internal fun CashierCounterDashboard(
     settlingOrder?.let { ord ->
         var selectedMethod by remember(ord.id) { mutableStateOf(PaymentMethod.WAVE) }
         var amountInput by remember(ord.id) { mutableStateOf(ord.remainingAmount.toString()) }
+        var isSubmittingSettle by remember(ord.id) { mutableStateOf(false) }
+        val parsedAmount = amountInput.toLongOrNull() ?: 0L
         AlertDialog(
-            onDismissRequest = { settlingOrder = null },
+            onDismissRequest = { if (!isSubmittingSettle) settlingOrder = null },
             title = { Text("Solde ${ord.orderNumber}", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -875,17 +880,24 @@ internal fun CashierCounterDashboard(
             confirmButton = {
                 Button(
                     onClick = {
-                        val amt = amountInput.toLongOrNull() ?: ord.remainingAmount
-                        if (amt > 0L) onRecordPayment(ord, amt, selectedMethod)
-                        settlingOrder = null
+                        if (!isSubmittingSettle && parsedAmount > 0L) {
+                            isSubmittingSettle = true
+                            onRecordPayment(ord, parsedAmount, selectedMethod)
+                            settlingOrder = null
+                        }
                     },
+                    enabled = !isSubmittingSettle && parsedAmount > 0L,
                     modifier = Modifier.heightIn(min = 48.dp)
                 ) {
                     Text("Valider l'encaissement")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { settlingOrder = null }, modifier = Modifier.heightIn(min = 48.dp)) {
+                TextButton(
+                    onClick = { settlingOrder = null },
+                    enabled = !isSubmittingSettle,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
                     Text("Annuler")
                 }
             }

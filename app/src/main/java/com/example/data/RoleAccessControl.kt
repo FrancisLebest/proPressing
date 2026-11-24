@@ -348,7 +348,8 @@ data class ActiveRoleSession(
     val role: WorkspaceRole = WorkspaceRole.DIRECTEUR,
     val operatorName: String = "Directeur Général",
     val isolatedAgency: String? = null,
-    val permissions: Set<AccessPermission> = RolePermissionMatrix.defaultPermissionsFor(WorkspaceRole.DIRECTEUR)
+    val permissions: Set<AccessPermission> = RolePermissionMatrix.defaultPermissionsFor(WorkspaceRole.DIRECTEUR),
+    val isSuperAdmin: Boolean = false
 ) {
     val effectiveScope: DataIsolationScope
         get() = when {
@@ -418,7 +419,8 @@ data class ActiveRoleSession(
             "finance" -> has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA) || has(AccessPermission.VIEW_AGENCY_REVENUE)
             "marketing" -> has(AccessPermission.SEND_WHATSAPP_NOTIFICATION) && has(AccessPermission.MANAGE_CLIENTS)
             "settings" -> canEditAgencySettingsAndTariffs || canManageLocalPrinter || canRunCashClose
-            "roles_rbac" -> has(AccessPermission.EDIT_PRIVILEGE_MATRIX) || has(AccessPermission.VIEW_SECURITY_AUDIT_LOG)
+            "roles_rbac" -> isSuperAdmin || has(AccessPermission.EDIT_PRIVILEGE_MATRIX) || has(AccessPermission.VIEW_SECURITY_AUDIT_LOG)
+            "saas_admin" -> isSuperAdmin || (role == WorkspaceRole.DIRECTEUR && has(AccessPermission.VIEW_MULTI_AGENCY_SYSCOHADA))
             else -> {
                 val req = RolePermissionMatrix.requiredPermissionForRoute(route) ?: return false
                 has(req)
@@ -438,8 +440,10 @@ data class ActiveRoleSession(
      * Any other role with user-management permission can only assign roles strictly below its own rank.
      */
     fun canAssignRole(targetRole: WorkspaceRole): Boolean {
-        if (!has(AccessPermission.MANAGE_USERS_AND_ROLES)) return false
-        if (role == WorkspaceRole.DIRECTEUR) return true
+        if (role == WorkspaceRole.DIRECTEUR || isSuperAdmin) return true
+        val canManageAgencyTeam = has(AccessPermission.MANAGE_USERS_AND_ROLES) ||
+            role == WorkspaceRole.GERANT_AGENCE
+        if (!canManageAgencyTeam) return false
         return targetRole.privilegeRank < role.privilegeRank
     }
 
@@ -866,7 +870,9 @@ object RoleSessionResolver {
         val cleanName = userDisplayName.trim()
 
         val ownerEmail = company?.email?.trim()?.lowercase().orEmpty()
-        val isExplicitCompanyOwner = ownerEmail.isNotBlank() && cleanEmail.isNotBlank() && cleanEmail == ownerEmail
+        val isPlatformSuperAdmin = cleanEmail == "lebest2london@gmail.com"
+        val isExplicitCompanyOwner = isPlatformSuperAdmin ||
+            (ownerEmail.isNotBlank() && cleanEmail.isNotBlank() && cleanEmail == ownerEmail)
 
         val matchedEmployee = if (isExplicitCompanyOwner) {
             null
@@ -887,7 +893,9 @@ object RoleSessionResolver {
             byPhone ?: byName
         }
 
-        val resolvedRole = if (matchedEmployee != null) {
+        val resolvedRole = if (isPlatformSuperAdmin) {
+            WorkspaceRole.DIRECTEUR
+        } else if (matchedEmployee != null) {
             WorkspaceRole.fromRaw(matchedEmployee.role)
         } else {
             WorkspaceRole.DIRECTEUR
@@ -900,6 +908,8 @@ object RoleSessionResolver {
         }
 
         val resolvedOperatorName = when {
+            isPlatformSuperAdmin && cleanName.isNotBlank() -> "$cleanName (Super-Admin)"
+            isPlatformSuperAdmin -> "Super-Admin · Gestion Pro Africa"
             matchedEmployee != null && matchedEmployee.fullName.isNotBlank() -> matchedEmployee.fullName.trim()
             cleanName.isNotBlank() -> cleanName
             company != null && company.companyName.isNotBlank() && resolvedRole == WorkspaceRole.DIRECTEUR ->
@@ -907,13 +917,18 @@ object RoleSessionResolver {
             else -> resolvedRole.labelFr
         }
 
-        val perms = rolePermissionsMap[resolvedRole] ?: RolePermissionMatrix.defaultPermissionsFor(resolvedRole)
+        val perms = if (isPlatformSuperAdmin) {
+            AccessPermission.entries.toSet()
+        } else {
+            rolePermissionsMap[resolvedRole] ?: RolePermissionMatrix.defaultPermissionsFor(resolvedRole)
+        }
 
         return ActiveRoleSession(
             role = resolvedRole,
             operatorName = resolvedOperatorName,
             isolatedAgency = resolvedAgency,
-            permissions = perms
+            permissions = perms,
+            isSuperAdmin = isPlatformSuperAdmin || isExplicitCompanyOwner
         )
     }
 }

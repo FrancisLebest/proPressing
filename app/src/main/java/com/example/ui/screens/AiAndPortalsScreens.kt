@@ -92,9 +92,12 @@ import com.example.data.CompanyConfig
 import com.example.data.OrderStatus
 import com.example.data.PressingOrder
 import com.example.data.QrCodeValidator
+import com.example.data.RolePermissionMatrix
 import com.example.data.ServiceItem
 import com.example.data.SubscriptionPlan
 import com.example.data.TrackingTokenGenerator
+import com.example.data.WorkspaceRole
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import com.example.ui.components.GestionProBrandHeader
 import com.example.ui.components.HorizontalOrderTimeline
 import com.example.ui.components.OrderStatusChip
@@ -103,6 +106,7 @@ import com.example.ui.components.QrBarcodeScannerDialog
 import com.example.ui.components.RoleBadgeChip
 import com.example.ui.theme.AfricaGold
 import com.example.ui.theme.AmberContainer
+import com.example.ui.theme.SoftBlueContainer
 import com.example.ui.theme.CrimsonContainer
 import com.example.ui.theme.CrimsonDanger
 import com.example.ui.theme.EmeraldContainer
@@ -735,10 +739,67 @@ fun SaasAdminScreen(
                 onClick = {
                     onUpdateCompany(company.copy(subscriptionPlan = selectedPlan.name, subscriptionBilling = selectedBilling))
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("saas_update_plan_button"),
                 colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
             ) {
                 Text("Mettre à jour la formule d'abonnement")
+            }
+
+            // 6-Role Multi-Dashboard Architecture & Security Overview Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("saas_multi_role_dashboards_card"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, PastelBlueBorder)
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null, tint = RoyalBlue)
+                        Text(
+                            "Architecture Multi-Tableaux de Bord (6 Rôles + Super-Admin)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        "Verrouillage strict par rôle Firestore et isolation par entité/agence (27 privilèges actifs) :",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    WorkspaceRole.entries.forEach { role ->
+                        val permsCount = RolePermissionMatrix.defaultPermissionsFor(role).size
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = PastelBlueTint,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(role.labelFr, fontWeight = FontWeight.Bold, color = MidnightNavy, style = MaterialTheme.typography.bodySmall)
+                                    Text(role.descriptionFr, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Surface(shape = RoundedCornerShape(50), color = SoftBlueContainer) {
+                                    Text(
+                                        "$permsCount/27 droits",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = RoyalBlue,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             OutlinedButton(
@@ -747,6 +808,7 @@ fun SaasAdminScreen(
                         appendLine("{")
                         appendLine("  \"company\": \"${company.companyName}\",")
                         appendLine("  \"plan\": \"${company.subscriptionPlan}\",")
+                        appendLine("  \"agenciesCount\": ${company.agencies.size},")
                         appendLine("  \"ordersCount\": ${orders.size},")
                         appendLine("  \"clientsCount\": ${clients.size},")
                         appendLine("  \"transactionsCount\": ${transactions.size}")
@@ -754,7 +816,10 @@ fun SaasAdminScreen(
                     }
                     shareTextIntent(context, "Sauvegarde SaaS ${company.companyName}", backupSummary)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .testTag("saas_export_backup_button")
             ) {
                 Icon(Icons.Rounded.Backup, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))

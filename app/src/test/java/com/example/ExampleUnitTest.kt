@@ -1076,6 +1076,20 @@ class ExampleUnitTest {
             company = company,
             employees = employees
         )
+        val superAdminSession = com.example.data.RoleSessionResolver.resolveForUser(
+            userEmail = "lebest2london@gmail.com",
+            userPhone = "",
+            userDisplayName = "Super Admin",
+            company = company,
+            employees = employees
+        )
+        assertTrue(superAdminSession.isSuperAdmin)
+        assertEquals(com.example.data.WorkspaceRole.DIRECTEUR, superAdminSession.role)
+        assertEquals(27, superAdminSession.permissions.size)
+        assertTrue(superAdminSession.canAccessRoute("saas_admin"))
+        assertTrue(superAdminSession.canAccessRoute("roles_rbac"))
+        assertFalse(mgrSession.canAccessRoute("saas_admin"))
+        assertFalse(cashSession.canAccessRoute("saas_admin"))
 
         // Exact role + agency binding for all 6 profiles
         assertEquals(com.example.data.WorkspaceRole.DIRECTEUR, dirSession.role)

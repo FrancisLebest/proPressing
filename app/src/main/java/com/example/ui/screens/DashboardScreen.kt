@@ -327,10 +327,17 @@ private fun DirecteurGeneralDashboard(
         item {
             DashboardRoleHeroHeader(
                 roleSession = roleSession,
-                title = "Direction Générale · ${company.companyName}",
-                subtitle = "Pilotage stratégique multi-agences, trésorerie SYSCOHADA et gouvernance sécurité.",
+                title = if (roleSession.isSuperAdmin) {
+                    "Super-Admin & Direction Générale · ${company.companyName}"
+                } else {
+                    "Direction Générale · ${company.companyName}"
+                },
+                subtitle = "Pilotage stratégique multi-agences, trésorerie SYSCOHADA, gouvernance SaaS et sécurité.",
                 trailingContent = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Button(
                             onClick = onNewOrder,
                             colors = ButtonDefaults.buttonColors(containerColor = AfricaGold, contentColor = MidnightNavy),
@@ -349,6 +356,19 @@ private fun DirecteurGeneralDashboard(
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text("SYSCOHADA", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = { onNavigateModule("saas_admin") },
+                            border = BorderStroke(1.dp, AfricaGold),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AfricaGold),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("dashboard_open_saas_admin_button")
+                        ) {
+                            Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Super-Admin SaaS", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
