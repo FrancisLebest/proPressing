@@ -826,8 +826,39 @@ fun ServiceDonutChart(
     centerLabel: String,
     modifier: Modifier = Modifier
 ) {
+    val visibleSlices = slices.filter { it.second.isFinite() && it.second > 0f }
+    if (visibleSlices.isEmpty()) {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Aucune donnée disponible",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "La répartition apparaîtra après l'enregistrement des premiers paiements.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        return
+    }
+
     val palette = listOf(RoyalBlue, AfricaGold, EmeraldSuccess, VioletAccent, AmberWarning)
-    val total = slices.sumOf { it.second.toDouble() }.toFloat().coerceAtLeast(1f)
+    val total = visibleSlices.sumOf { it.second.toDouble() }.toFloat()
 
     val donutGraphic: @Composable () -> Unit = {
         Box(
@@ -837,7 +868,7 @@ fun ServiceDonutChart(
             Canvas(modifier = Modifier.size(102.dp)) {
                 var startAngle = -90f
                 val strokeWidth = 19.dp.toPx()
-                slices.forEachIndexed { idx, (_, value) ->
+                visibleSlices.forEachIndexed { idx, (_, value) ->
                     val sweep = (value / total) * 360f
                     drawArc(
                         color = palette[idx % palette.size],
@@ -866,7 +897,7 @@ fun ServiceDonutChart(
             modifier = legendMod,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            slices.forEachIndexed { idx, (name, value) ->
+            visibleSlices.forEachIndexed { idx, (name, value) ->
                 val pct = ((value / total) * 100f).toInt()
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

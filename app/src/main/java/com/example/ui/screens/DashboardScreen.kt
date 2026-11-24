@@ -115,6 +115,26 @@ import com.example.ui.theme.RoyalBlue
 import com.example.ui.theme.SoftBlueContainer
 import com.example.ui.theme.VioletAccent
 
+/**
+ * Aggregates only real, positive revenue by supported payment method.
+ * An empty list is meaningful: the UI must show an empty state, never sample values.
+ */
+internal fun buildPaymentMethodSlices(payments: List<Pair<String, Long>>): List<Pair<String, Float>> {
+    val methods = listOf(
+        PaymentMethod.ESPECES.name to "Espèces",
+        PaymentMethod.WAVE.name to "Wave",
+        PaymentMethod.ORANGE_MONEY.name to "Orange Money",
+        PaymentMethod.MTN_MOMO.name to "MTN MoMo",
+        PaymentMethod.MOOV_MONEY.name to "Moov Money"
+    )
+    return methods.mapNotNull { (code, label) ->
+        val amount = payments.asSequence()
+            .filter { (method, value) -> method == code && value > 0L }
+            .sumOf { it.second }
+        if (amount > 0L) label to amount.toFloat() else null
+    }
+}
+
 private data class TimeWindowOption(val label: String, val days: Int)
 
 private val DASHBOARD_TIME_WINDOWS = listOf(
@@ -295,14 +315,9 @@ private fun DirecteurGeneralDashboard(
     // Payment method donut slices (Espèces, Wave, Orange Money, MTN MoMo, Moov Money)
     val paymentSlices = remember(filteredTx) {
         val revTx = filteredTx.filter { it.entryType == "REVENUE" }
-        val raw = listOf(
-            "Espèces" to revTx.filter { it.paymentMethod == PaymentMethod.ESPECES.name }.sumOf { it.amount }.toFloat(),
-            "Wave" to revTx.filter { it.paymentMethod == PaymentMethod.WAVE.name }.sumOf { it.amount }.toFloat(),
-            "Orange Money" to revTx.filter { it.paymentMethod == PaymentMethod.ORANGE_MONEY.name }.sumOf { it.amount }.toFloat(),
-            "MTN MoMo" to revTx.filter { it.paymentMethod == PaymentMethod.MTN_MOMO.name }.sumOf { it.amount }.toFloat(),
-            "Moov Money" to revTx.filter { it.paymentMethod == PaymentMethod.MOOV_MONEY.name }.sumOf { it.amount }.toFloat()
-        ).filter { it.second > 0f }
-        raw.ifEmpty { listOf("Espèces" to 1f, "Wave" to 1f, "Orange Money" to 1f) }
+        buildPaymentMethodSlices(
+            revTx.map { transaction -> transaction.paymentMethod to transaction.amount }
+        )
     }
 
     // Agency comparison built on all tenant orders so Directeur can compare & click to filter
@@ -386,12 +401,17 @@ private fun DirecteurGeneralDashboard(
             )
         }
 
-        // Signature 2x2 Vibrant Mockup KPI Grid (Screen 5 — Gestion Pro Africa)
+        // Adaptive KPI grid: 2 columns on phones/tablets, 4 on wide workspaces.
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val columns = if (maxWidth >= 1100.dp) 4 else 2
+                val gap = 10.dp
+                val tileWidth = (maxWidth - gap * (columns - 1)) / columns
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    maxItemsInEachRow = columns,
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     GPAVibrantKpiTile(
                         title = "Commandes",
@@ -400,7 +420,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiVioletStart,
                         endColor = KpiVioletEnd,
                         onClick = { onNavigateModule("orders") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_orders")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_orders")
                     )
                     GPAVibrantKpiTile(
                         title = "Clients",
@@ -409,13 +429,8 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiGreenStart,
                         endColor = KpiGreenEnd,
                         onClick = { onNavigateModule("clients") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_clients")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_clients")
                     )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
                     GPAVibrantKpiTile(
                         title = "Chiffre d'affaires",
                         value = formatMoney(globalRevenue, currency),
@@ -423,7 +438,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiGoldStart,
                         endColor = KpiGoldEnd,
                         onClick = { onNavigateModule("finance") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_revenue")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_revenue")
                     )
                     GPAVibrantKpiTile(
                         title = "Articles traités",
@@ -432,7 +447,7 @@ private fun DirecteurGeneralDashboard(
                         startColor = KpiCoralStart,
                         endColor = KpiCoralEnd,
                         onClick = { onNavigateModule("workshop_tracker") },
-                        modifier = Modifier.weight(1f).testTag("kpi_tile_articles")
+                        modifier = Modifier.width(tileWidth).testTag("kpi_tile_articles")
                     )
                 }
             }

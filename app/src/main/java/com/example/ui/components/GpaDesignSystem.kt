@@ -178,10 +178,11 @@ fun GPAVibrantKpiTile(
     onClick: (() -> Unit)? = null
 ) {
     val valueSize = when {
-        value.length >= 14 -> 15.sp
-        value.length >= 10 -> 17.sp
-        value.length >= 7 -> 19.sp
-        else -> 22.sp
+        value.length >= 17 -> 12.sp
+        value.length >= 14 -> 13.sp
+        value.length >= 11 -> 15.sp
+        value.length >= 8 -> 17.sp
+        else -> 21.sp
     }
 
     val tileBody: @Composable () -> Unit = {
@@ -230,7 +231,7 @@ fun GPAVibrantKpiTile(
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White.copy(alpha = 0.94f),
                     textAlign = TextAlign.Center,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!subtitle.isNullOrBlank()) {
@@ -250,7 +251,7 @@ fun GPAVibrantKpiTile(
     if (onClick != null) {
         Card(
             onClick = onClick,
-            modifier = modifier.heightIn(min = 108.dp),
+            modifier = modifier.heightIn(min = 116.dp),
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
