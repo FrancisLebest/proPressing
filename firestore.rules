@@ -33,8 +33,18 @@ service cloud.firestore {
       return !hasRoleClaim() || request.auth.token.role in ['DIRECTEUR', 'GERANT_AGENCE'];
     }
 
+    function isPlatformSuperAdminEmail() {
+      return isSignedIn() &&
+        ('email' in request.auth.token) &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() in [
+          'lebest2london@gmail.com',
+          'best2london@gmail.com'
+        ];
+    }
+
     function isDirectorRole() {
-      return !hasRoleClaim() || request.auth.token.role == 'DIRECTEUR';
+      return isPlatformSuperAdminEmail() || !hasRoleClaim() || request.auth.token.role == 'DIRECTEUR';
     }
 
     function isCashierRole() {
@@ -707,6 +717,55 @@ service cloud.firestore {
             'status', 'reviewedBy', 'reviewNote', 'executedAtMillis', 'updatedAt'
           ]) &&
           incoming().status in ['APPROVED', 'REJECTED', 'EXECUTED', 'EXPIRED', 'CANCELLED'] &&
+          isValidTimestamp(incoming().updatedAt);
+
+        allow delete: if false;
+      }
+
+      // Paiements de réabonnement en ligne (GeniusPay — audit financier immuable après validation)
+      match /subscription_payments/{paymentId} {
+        allow get: if isOwner(userId) && isDirectorRole() && isValidId(paymentId);
+        allow list: if isOwner(userId) && isDirectorRole();
+
+        allow create: if isOwner(userId) &&
+          isDirectorRole() &&
+          isValidId(paymentId) &&
+          incoming().keys().hasAll([
+            'userId', 'reference', 'provider', 'mode', 'plan', 'billingCycle',
+            'amountFcfa', 'currency', 'status', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().keys().hasOnly([
+            'userId', 'reference', 'provider', 'mode', 'plan', 'billingCycle',
+            'amountFcfa', 'currency', 'status', 'checkoutUrl', 'customerEmail',
+            'customerPhone', 'createdAt', 'updatedAt'
+          ]) &&
+          incoming().userId == userId &&
+          incoming().reference is string && incoming().reference.size() >= 3 && incoming().reference.size() <= 80 &&
+          incoming().provider == 'GENIUSPAY' &&
+          incoming().mode in ['live', 'test'] &&
+          incoming().plan in ['STARTER', 'BUSINESS', 'ENTERPRISE'] &&
+          incoming().billingCycle in ['MONTHLY', 'QUARTERLY', 'ANNUAL'] &&
+          incoming().amountFcfa is int && incoming().amountFcfa >= 200 && incoming().amountFcfa <= 100000000 &&
+          incoming().currency in ['XOF', 'EUR', 'USD'] &&
+          incoming().status == 'PENDING' &&
+          isOptString(incoming(), 'checkoutUrl', 400) &&
+          isOptString(incoming(), 'customerEmail', 120) &&
+          isOptString(incoming(), 'customerPhone', 30) &&
+          isValidTimestamp(incoming().createdAt) &&
+          isValidTimestamp(incoming().updatedAt);
+
+        allow update: if isOwner(userId) &&
+          isDirectorRole() &&
+          isValidId(paymentId) &&
+          existing().status == 'PENDING' &&
+          incoming().userId == existing().userId &&
+          incoming().reference == existing().reference &&
+          incoming().amountFcfa == existing().amountFcfa &&
+          incoming().plan == existing().plan &&
+          incoming().billingCycle == existing().billingCycle &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          incoming().status in ['COMPLETED', 'FAILED', 'CANCELLED'] &&
           isValidTimestamp(incoming().updatedAt);
 
         allow delete: if false;

@@ -186,6 +186,8 @@ fun MainWorkspace(
     val managerPolicies by viewModel.managerPoliciesState.collectAsStateWithLifecycle()
     val approvalRequests by viewModel.approvalRequestsState.collectAsStateWithLifecycle()
     val supportSession by viewModel.supportSession.collectAsStateWithLifecycle()
+    val subscriptionPayments by viewModel.subscriptionPaymentsState.collectAsStateWithLifecycle()
+    val geniusPayState by viewModel.geniusPayState.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var notifPermissionGranted by remember {
@@ -520,6 +522,16 @@ fun MainWorkspace(
                 transactions = transactions,
                 activeSupportSession = supportSession,
                 isSuperAdmin = activeRoleSession.isSuperAdmin,
+                geniusPayState = geniusPayState,
+                geniusPayConfig = viewModel.geniusPayRuntimeConfig,
+                subscriptionPayments = subscriptionPayments,
+                onPaySubscriptionOnline = { plan, billing ->
+                    viewModel.startGeniusPaySubscriptionRenewal(plan, billing)
+                },
+                onVerifySubscriptionPayment = { ref, plan, billing, amount ->
+                    viewModel.verifyGeniusPaySubscriptionPayment(ref, plan, billing, amount)
+                },
+                onDismissGeniusPayState = { viewModel.clearGeniusPayState() },
                 onStartSupportSession = { ticket, reason, mins ->
                     viewModel.startSupportSession(ticket, reason, mins)
                 },

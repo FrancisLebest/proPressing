@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -33,12 +34,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.core.FirebaseAuthInitializer
 import com.example.core.NetworkConnectivityObserver
 import com.example.core.PressingNotificationManager
 import com.example.core.configureAppCheck
 import com.example.data.AiRepository
 import com.example.data.AuthSessionState
 import com.example.data.AuthUserProfile
+import com.example.data.PlatformSuperAdminConfig
 import com.example.data.PressingRepository
 import com.example.data.local.OfflineSyncRepository
 import com.example.data.local.PressingLocalDatabase
@@ -60,8 +63,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // STEP 1: Configure Firebase App Check with launch intent BEFORE any UI, ViewModels, or Firebase calls
+        // STEP 1: Configure Firebase App Check & FirebaseAuth (Email/Password + Google readiness) BEFORE any UI or ViewModels
         configureAppCheck(this, intent)
+        FirebaseAuthInitializer.initializeAuth(this)
         PressingNotificationManager.ensureChannels(this)
 
         enableEdgeToEdge()
@@ -192,6 +196,12 @@ private fun AuthenticatedPressingApp(
     val employeesState by viewModel.employeesState.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
     var forceSetupWizard by remember { mutableStateOf(false) }
+
+    LaunchedEffect(userProfile.uid, userProfile.email) {
+        if (PlatformSuperAdminConfig.isPlatformSuperAdminEmail(userProfile.email)) {
+            viewModel.ensureAdminExistsIfSuperAdmin()
+        }
+    }
 
     when (val state = companyState) {
         UiState.Loading -> {

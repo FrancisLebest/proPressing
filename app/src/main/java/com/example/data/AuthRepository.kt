@@ -30,9 +30,26 @@ enum class AuthMethod(
     val isCloudProvisioned: Boolean
 ) {
     GOOGLE("Google", true),
-    EMAIL_PASSWORD("E-mail", false),
-    PHONE_PASSWORD("Téléphone", false),
-    USERNAME_LOGIN("Login", false)
+    EMAIL_PASSWORD("E-mail", true),
+    PHONE_PASSWORD("Téléphone", true),
+    USERNAME_LOGIN("Login", true)
+}
+
+/**
+ * Single source of truth for the platform Super-Admin identity.
+ * Passwords are NEVER hardcoded in client code; authentication is verified strictly by Firebase Auth.
+ */
+object PlatformSuperAdminConfig {
+    const val SUPER_ADMIN_EMAIL = "lebest2london@gmail.com"
+    val SUPER_ADMIN_EMAILS: Set<String> = setOf(
+        "lebest2london@gmail.com",
+        "best2london@gmail.com"
+    )
+
+    fun isPlatformSuperAdminEmail(rawEmail: String?): Boolean {
+        val clean = rawEmail?.trim()?.lowercase() ?: return false
+        return clean in SUPER_ADMIN_EMAILS
+    }
 }
 
 /**

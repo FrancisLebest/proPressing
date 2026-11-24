@@ -45,11 +45,25 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      // Guarantee zero Super-Admin bootstrap credentials exist in production binaries
+      buildConfigField("boolean", "ALLOW_CLIENT_ADMIN_BOOTSTRAP", "false")
+      buildConfigField("String", "SUPER_ADMIN_BOOTSTRAP_EMAIL", "\"\"")
+      buildConfigField("String", "SUPER_ADMIN_BOOTSTRAP_PASSWORD", "\"\"")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      val debugAdminEmail = (System.getenv("SUPER_ADMIN_BOOTSTRAP_EMAIL") ?: "")
+        .replace("\\", "")
+        .replace("\"", "")
+        .trim()
+      val debugAdminPassword = (System.getenv("SUPER_ADMIN_BOOTSTRAP_PASSWORD") ?: "")
+        .replace("\\", "")
+        .replace("\"", "")
+      buildConfigField("boolean", "ALLOW_CLIENT_ADMIN_BOOTSTRAP", "true")
+      buildConfigField("String", "SUPER_ADMIN_BOOTSTRAP_EMAIL", "\"$debugAdminEmail\"")
+      buildConfigField("String", "SUPER_ADMIN_BOOTSTRAP_PASSWORD", "\"$debugAdminPassword\"")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -76,6 +90,9 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("GENIUSPAY_WEBHOOK_SECRET")
+  ignoreList.add("SUPER_ADMIN_BOOTSTRAP_EMAIL")
+  ignoreList.add("SUPER_ADMIN_BOOTSTRAP_PASSWORD")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
@@ -121,7 +138,7 @@ dependencies {
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.logging.interceptor)
   // implementation(libs.moshi.kotlin)
-  // implementation(libs.okhttp)
+  implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   // implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

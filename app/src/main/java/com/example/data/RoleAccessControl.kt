@@ -870,7 +870,7 @@ object RoleSessionResolver {
         val cleanName = userDisplayName.trim()
 
         val ownerEmail = company?.email?.trim()?.lowercase().orEmpty()
-        val isPlatformSuperAdmin = cleanEmail == "lebest2london@gmail.com"
+        val isPlatformSuperAdmin = PlatformSuperAdminConfig.isPlatformSuperAdminEmail(cleanEmail)
         val isExplicitCompanyOwner = isPlatformSuperAdmin ||
             (ownerEmail.isNotBlank() && cleanEmail.isNotBlank() && cleanEmail == ownerEmail)
 
@@ -928,7 +928,7 @@ object RoleSessionResolver {
             operatorName = resolvedOperatorName,
             isolatedAgency = resolvedAgency,
             permissions = perms,
-            isSuperAdmin = isPlatformSuperAdmin || isExplicitCompanyOwner
+            isSuperAdmin = isPlatformSuperAdmin
         )
     }
 }

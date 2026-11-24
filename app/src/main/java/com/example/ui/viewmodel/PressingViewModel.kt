@@ -13,6 +13,7 @@ import com.example.core.nowFormatted
 import com.example.data.AccessPermission
 import com.example.data.AccountingEntry
 import com.example.data.ActiveRoleSession
+import com.example.data.AdminProvisioningManager
 import com.example.data.AiRepository
 import com.example.data.AuditLogRecord
 import com.example.data.ClaimRecord
@@ -20,6 +21,7 @@ import com.example.data.ClientRecord
 import com.example.data.CompanyConfig
 import com.example.data.DefaultCatalogTemplates
 import com.example.data.EmployeeRecord
+import com.example.data.PlatformSuperAdminConfig
 import com.example.data.FcmTokenRecord
 import com.example.data.GarmentAiAnalysis
 import com.example.data.GarmentWorkshopStatus
@@ -39,8 +41,14 @@ import com.example.data.ApprovalRequestRecord
 import com.example.data.ApprovalStatus
 import com.example.data.AuthorizationDecision
 import com.example.data.AuthorizationEngine
+import com.example.data.GeniusPayCheckoutSession
+import com.example.data.GeniusPayRepository
+import com.example.data.GeniusPayRuntimeConfig
 import com.example.data.ManagerAccessPolicy
 import com.example.data.SensitiveOperationType
+import com.example.data.SubscriptionPaymentRecord
+import com.example.data.SubscriptionPaymentStatus
+import com.example.data.SubscriptionPlan
 import com.example.data.SupportAccessSession
 import com.example.data.TenantDataScoper
 import com.example.data.TrackingTokenGenerator
@@ -86,6 +94,20 @@ sealed interface GarmentVisionState {
     data class Error(val message: String) : GarmentVisionState
 }
 
+sealed interface GeniusPayUiState {
+    data object Idle : GeniusPayUiState
+    data object CreatingCheckout : GeniusPayUiState
+    data class CheckoutReady(val session: GeniusPayCheckoutSession) : GeniusPayUiState
+    data class Verifying(val reference: String) : GeniusPayUiState
+    data class Paid(
+        val reference: String,
+        val plan: SubscriptionPlan,
+        val billingCycle: String,
+        val amountFcfa: Long
+    ) : GeniusPayUiState
+    data class Error(val message: String) : GeniusPayUiState
+}
+
 class PressingViewModel(
     private val repository: PressingRepository,
     private val aiRepository: AiRepository,
@@ -95,7 +117,8 @@ class PressingViewModel(
     val currentUserName: String = "",
     private val appContext: Context? = null,
     private val offlineSyncRepository: OfflineSyncRepository? = null,
-    private val connectivityObserver: NetworkConnectivityObserver? = null
+    private val connectivityObserver: NetworkConnectivityObserver? = null,
+    private val geniusPayRepository: GeniusPayRepository = GeniusPayRepository()
 ) : ViewModel() {
 
     private val safeUserDisplayName: String = sanitizeOperatorName(currentUserName, fallback = "")
@@ -247,6 +270,21 @@ class PressingViewModel(
 
     private val _supportSession = MutableStateFlow<SupportAccessSession?>(null)
     val supportSession: StateFlow<SupportAccessSession?> = _supportSession.asStateFlow()
+
+    val subscriptionPaymentsState: StateFlow<List<SubscriptionPaymentRecord>> =
+        repository.observeSubscriptionPayments(currentUserId)
+            .catch { emit(emptyList()) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+                initialValue = emptyList()
+            )
+
+    private val _geniusPayState = MutableStateFlow<GeniusPayUiState>(GeniusPayUiState.Idle)
+    val geniusPayState: StateFlow<GeniusPayUiState> = _geniusPayState.asStateFlow()
+
+    val geniusPayRuntimeConfig: GeniusPayRuntimeConfig
+        get() = geniusPayRepository.currentConfig()
 
     private val _rolePermissionsMap = MutableStateFlow(
         WorkspaceRole.entries.associateWith { RolePermissionMatrix.defaultPermissionsFor(it) }
@@ -1404,5 +1442,145 @@ class PressingViewModel(
             allowed = true
         )
         _feedbackMessage.value = "Session d'assistance révoquée immédiatement."
+    }
+
+    fun ensureAdminExistsIfSuperAdmin() {
+        if (!PlatformSuperAdminConfig.isPlatformSuperAdminEmail(currentUserEmail)) return
+        viewModelScope.launch {
+            val manager = AdminProvisioningManager(
+                firestoreProfileSeeder = { uid, email ->
+                    repository.ensureSuperAdminCompanyProfile(uid, email)
+                }
+            )
+            manager.ensureAdminExists()
+        }
+    }
+
+    fun clearGeniusPayState() {
+        _geniusPayState.value = GeniusPayUiState.Idle
+    }
+
+    fun startGeniusPaySubscriptionRenewal(
+        plan: SubscriptionPlan,
+        billingCycle: String
+    ) {
+        val session = _activeRoleSession.value
+        if (session.role != WorkspaceRole.DIRECTEUR && !session.isSuperAdmin) {
+            recordAudit(
+                action = "Tentative non autorisée de réabonnement en ligne (${plan.labelFr})",
+                allowed = false
+            )
+            _feedbackMessage.value = "Seul l'Administrateur Pressing ou le Super-Admin peut payer un réabonnement."
+            return
+        }
+        val currentState = _geniusPayState.value
+        if (currentState is GeniusPayUiState.CreatingCheckout || currentState is GeniusPayUiState.Verifying) {
+            return
+        }
+        val company = (companyState.value as? UiState.Success)?.data ?: CompanyConfig()
+        val email = currentUserEmail.ifBlank { company.email }
+        val phone = currentUserPhone.ifBlank { company.phone }
+        val customerName = safeUserDisplayName.ifBlank { company.companyName }
+
+        viewModelScope.launch {
+            _geniusPayState.value = GeniusPayUiState.CreatingCheckout
+            val result = geniusPayRepository.initiateSubscriptionRenewal(
+                companyName = company.companyName,
+                customerName = customerName,
+                customerEmail = email,
+                customerPhone = phone,
+                plan = plan,
+                billingCycle = billingCycle,
+                tenantUid = currentUserId
+            )
+            result.onSuccess { checkout ->
+                val paymentRecord = SubscriptionPaymentRecord(
+                    userId = currentUserId,
+                    reference = checkout.reference,
+                    provider = "GENIUSPAY",
+                    mode = checkout.mode,
+                    plan = checkout.plan.name,
+                    billingCycle = checkout.billingCycle,
+                    amountFcfa = checkout.amountFcfa,
+                    currency = checkout.currency,
+                    status = SubscriptionPaymentStatus.PENDING.name,
+                    checkoutUrl = checkout.checkoutUrl,
+                    customerEmail = email,
+                    customerPhone = phone
+                )
+                repository.saveSubscriptionPayment(currentUserId, paymentRecord)
+                recordAudit(
+                    action = "Paiement réabonnement GeniusPay initié : ${checkout.plan.labelFr} (${checkout.billingCycle}) — ${formatMoney(checkout.amountFcfa)} · Réf ${checkout.reference}",
+                    allowed = true
+                )
+                _geniusPayState.value = GeniusPayUiState.CheckoutReady(checkout)
+                _feedbackMessage.value = "Lien de paiement GeniusPay prêt (Réf. ${checkout.reference})."
+            }.onFailure { err ->
+                val msg = err.message ?: "Impossible d'initialiser le paiement GeniusPay."
+                _geniusPayState.value = GeniusPayUiState.Error(msg)
+                _feedbackMessage.value = msg
+            }
+        }
+    }
+
+    fun verifyGeniusPaySubscriptionPayment(
+        reference: String,
+        plan: SubscriptionPlan,
+        billingCycle: String,
+        amountFcfa: Long
+    ) {
+        val currentState = _geniusPayState.value
+        if (currentState is GeniusPayUiState.Verifying || currentState is GeniusPayUiState.CreatingCheckout) {
+            return
+        }
+        viewModelScope.launch {
+            _geniusPayState.value = GeniusPayUiState.Verifying(reference)
+            val result = geniusPayRepository.verifyPaymentStatus(reference)
+            result.onSuccess { paymentStatus ->
+                when (paymentStatus) {
+                    SubscriptionPaymentStatus.COMPLETED -> {
+                        repository.updateSubscriptionPaymentStatus(currentUserId, reference, SubscriptionPaymentStatus.COMPLETED)
+                        val company = (companyState.value as? UiState.Success)?.data ?: CompanyConfig()
+                        val activated = company.copy(
+                            subscriptionPlan = plan.name,
+                            subscriptionBilling = billingCycle,
+                            subscriptionStatus = "ACTIVE"
+                        )
+                        repository.saveCompanyConfig(currentUserId, activated)
+                        recordAudit(
+                            action = "Réabonnement GeniusPay confirmé et activé : ${plan.labelFr} ($billingCycle) — ${formatMoney(amountFcfa)} · Réf $reference",
+                            allowed = true
+                        )
+                        _geniusPayState.value = GeniusPayUiState.Paid(
+                            reference = reference,
+                            plan = plan,
+                            billingCycle = billingCycle,
+                            amountFcfa = amountFcfa
+                        )
+                        _feedbackMessage.value = "Paiement GeniusPay confirmé ! Abonnement ${plan.labelFr} activé."
+                    }
+                    SubscriptionPaymentStatus.PENDING -> {
+                        _geniusPayState.value = GeniusPayUiState.Error(
+                            "Paiement encore en attente chez GeniusPay (Réf. $reference). Finalisez sur la page GeniusPay puis revérifiez."
+                        )
+                    }
+                    SubscriptionPaymentStatus.FAILED,
+                    SubscriptionPaymentStatus.CANCELLED -> {
+                        repository.updateSubscriptionPaymentStatus(currentUserId, reference, paymentStatus)
+                        recordAudit(
+                            action = "Réabonnement GeniusPay ${paymentStatus.labelFr.lowercase()} · Réf $reference",
+                            allowed = false
+                        )
+                        _geniusPayState.value = GeniusPayUiState.Error(
+                            "Paiement ${paymentStatus.labelFr.lowercase()} par GeniusPay (Réf. $reference)."
+                        )
+                    }
+                }
+            }.onFailure { err ->
+                val msg = err.message ?: "Impossible de vérifier le statut GeniusPay."
+                _geniusPayState.value = GeniusPayUiState.Error(msg)
+                _feedbackMessage.value = msg
+            }
+        }
     }
 }

@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.core.FirebaseAuthInitializer
 import com.example.core.GoogleCredentialOutcome
 import com.example.core.fetchInteractiveGoogleIdToken
 import com.example.core.fetchSilentGoogleIdToken
+import com.example.data.AdminBootstrapResult
+import com.example.data.AdminProvisioningManager
 import com.example.data.AuthErrorMapper
 import com.example.data.AuthInputValidator
 import com.example.data.AuthMethod
@@ -15,6 +18,7 @@ import com.example.data.AuthRepository
 import com.example.data.AuthSessionState
 import com.example.data.AuthUserProfile
 import com.example.data.EmailPasswordProviderDisabledException
+import com.example.data.PressingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
-    val selectedMethod: AuthMethod = AuthMethod.GOOGLE,
+    val selectedMethod: AuthMethod = AuthMethod.EMAIL_PASSWORD,
     val isRegistrationMode: Boolean = false,
     val isLoading: Boolean = false,
     val isAutoSigningIn: Boolean = false,
@@ -45,6 +49,10 @@ class AuthViewModel(
     private val rateLimiter = AuthRateLimiter()
     private val _isCheckingInitialSession = MutableStateFlow(false)
     private var autoSignInAttempted = false
+    private var adminBootstrapAttempted = false
+
+    private val _adminBootstrapResult = MutableStateFlow<AdminBootstrapResult?>(null)
+    val adminBootstrapResult: StateFlow<AdminBootstrapResult?> = _adminBootstrapResult.asStateFlow()
 
     private val _manualProfileOverride = MutableStateFlow<AuthUserProfile?>(null)
 
@@ -97,7 +105,28 @@ class AuthViewModel(
         _uiState.update { it.copy(errorMessage = null, infoMessage = null) }
     }
 
+    fun ensureAdminExists(context: Context) {
+        if (adminBootstrapAttempted) return
+        adminBootstrapAttempted = true
+        viewModelScope.launch {
+            val appCtx = context.applicationContext
+            FirebaseAuthInitializer.initializeAuth(appCtx)
+            val manager = AdminProvisioningManager(
+                firestoreProfileSeeder = { uid, email ->
+                    runCatching { PressingRepository(appCtx).ensureSuperAdminCompanyProfile(uid, email) }
+                        .getOrElse { Result.failure(it) }
+                }
+            )
+            val outcome = manager.ensureAdminExists()
+            _adminBootstrapResult.value = outcome
+            if (outcome is AdminBootstrapResult.ProviderDisabledInConsole) {
+                _uiState.update { it.copy(isEmailProviderDisabled = true) }
+            }
+        }
+    }
+
     fun attemptAutoSignInOnce(context: Context, credentialManager: CredentialManager) {
+        ensureAdminExists(context)
         if (autoSignInAttempted) return
         autoSignInAttempted = true
         if (authRepository.currentUserProfile() != null) return
@@ -184,7 +213,9 @@ class AuthViewModel(
 
     private fun handleEmailOrPhoneFailure(err: Throwable, fallbackMessage: String) {
         val providerDisabled = err is EmailPasswordProviderDisabledException
-        if (!providerDisabled) {
+        if (providerDisabled) {
+            FirebaseAuthInitializer.markEmailPasswordDisabledInConsole()
+        } else {
             rateLimiter.recordFailure()
         }
         _uiState.update {
@@ -221,7 +252,6 @@ class AuthViewModel(
 
     fun signInWithEmail(email: String, password: String) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         if (checkRateLimitBlocked()) return
         AuthInputValidator.validateEmail(email)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
@@ -232,9 +262,17 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.signInWithEmailCredential(email, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
@@ -251,7 +289,6 @@ class AuthViewModel(
         acceptedTerms: Boolean
     ) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         val errors = AuthInputValidator.validateRegistration(
             fullName = fullName,
             email = email,
@@ -264,9 +301,17 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.registerWithEmailPassword(fullName, email, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
@@ -277,13 +322,19 @@ class AuthViewModel(
 
     fun sendPasswordReset(email: String) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         AuthInputValidator.validateEmail(email)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.sendPasswordResetEmail(email)
             result.onSuccess {
                 _uiState.update {
@@ -301,7 +352,7 @@ class AuthViewModel(
 
     fun signInWithPhone(dialCode: String, localNumber: String, password: String) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
+        if (checkRateLimitBlocked()) return
         AuthInputValidator.validatePhone(dialCode, localNumber)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
@@ -311,9 +362,17 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.signInWithPhonePassword(dialCode, localNumber, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
@@ -331,7 +390,6 @@ class AuthViewModel(
         acceptedTerms: Boolean
     ) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         val errors = AuthInputValidator.validatePhoneRegistration(
             fullName = fullName,
             dialCode = dialCode,
@@ -345,7 +403,14 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.registerWithPhonePassword(fullName, dialCode, localNumber, password)
             result.onSuccess { profile ->
                 rateLimiter.recordSuccess()
@@ -359,7 +424,6 @@ class AuthViewModel(
 
     fun signInWithUsername(username: String, password: String) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         if (checkRateLimitBlocked()) return
         AuthInputValidator.validateUsername(username)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
@@ -370,7 +434,14 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.signInWithUsernamePassword(username, password)
             result.onSuccess { profile ->
                 rateLimiter.recordSuccess()
@@ -390,7 +461,6 @@ class AuthViewModel(
         acceptedTerms: Boolean
     ) {
         if (_uiState.value.isLoading) return
-        if (shortCircuitIfEmailProviderDisabled()) return
         val errors = AuthInputValidator.validateUsernameRegistration(
             fullName = fullName,
             rawUsername = username,
@@ -403,7 +473,14 @@ class AuthViewModel(
             return
         }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isEmailProviderDisabled = false,
+                    errorMessage = null,
+                    infoMessage = null
+                )
+            }
             val result = authRepository.registerWithUsernamePassword(fullName, username, password)
             result.onSuccess { profile ->
                 rateLimiter.recordSuccess()

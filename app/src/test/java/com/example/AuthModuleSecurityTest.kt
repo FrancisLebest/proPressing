@@ -1,11 +1,23 @@
 package com.example
 
+import com.example.data.AdminBootstrapCredentialSource
+import com.example.data.AdminBootstrapResult
+import com.example.data.AdminProvisioningManager
 import com.example.data.AfricanDialCodes
 import com.example.data.AuthErrorMapper
 import com.example.data.AuthInputValidator
 import com.example.data.AuthRateLimiter
+import com.example.data.CompanyConfig
 import com.example.data.EnterpriseRegistrationDraft
+import com.example.data.GeniusPayRuntimeConfig
+import com.example.data.GeniusPayUrlValidator
+import com.example.data.GeniusPayWebhookSignature
 import com.example.data.PasswordStrengthLevel
+import com.example.data.PlatformSuperAdminConfig
+import com.example.data.RoleSessionResolver
+import com.example.data.SubscriptionPaymentStatus
+import com.example.data.SubscriptionPlan
+import com.example.data.SubscriptionRenewalPricing
 import com.example.data.SystemRoleTier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,7 +27,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Automated security and validation test suite for GESTION PRO AFRICA Authentication module (Section 18).
+ * Automated security and validation test suite for GESTION PRO AFRICA Authentication & GeniusPay module.
  */
 class AuthModuleSecurityTest {
 
@@ -102,4 +114,127 @@ class AuthModuleSecurityTest {
         limiter.recordSuccess()
         assertEquals(0, limiter.remainingCooldownSeconds(t0))
     }
+
+    @Test
+    fun platformSuperAdmin_isExclusivelyBoundToConfiguredEmail() {
+        assertTrue(PlatformSuperAdminConfig.isPlatformSuperAdminEmail("lebest2london@gmail.com"))
+        assertTrue(PlatformSuperAdminConfig.isPlatformSuperAdminEmail("best2london@gmail.com"))
+        assertTrue(PlatformSuperAdminConfig.isPlatformSuperAdminEmail("  LEBEST2LONDON@GMAIL.COM "))
+        assertFalse(PlatformSuperAdminConfig.isPlatformSuperAdminEmail("directeur@pressing.ci"))
+
+        val company = CompanyConfig(companyName = "Pressing Élite", email = "directeur@pressing.ci")
+        val superAdminPrimary = RoleSessionResolver.resolveForUser(
+            userEmail = "lebest2london@gmail.com",
+            userPhone = "",
+            userDisplayName = "Super Admin",
+            company = company,
+            employees = emptyList()
+        )
+        assertTrue(superAdminPrimary.isSuperAdmin)
+
+        val superAdminSecondary = RoleSessionResolver.resolveForUser(
+            userEmail = "best2london@gmail.com",
+            userPhone = "",
+            userDisplayName = "Super Admin",
+            company = company,
+            employees = emptyList()
+        )
+        assertTrue(superAdminSecondary.isSuperAdmin)
+
+        val regularOwner = RoleSessionResolver.resolveForUser(
+            userEmail = "directeur@pressing.ci",
+            userPhone = "",
+            userDisplayName = "Kouassi Yao",
+            company = company,
+            employees = emptyList()
+        )
+        assertFalse(regularOwner.isSuperAdmin)
+    }
+
+    @Test
+    fun geniusPayPricingUrlAllowlistAndWebhookHmac_enforceSecurityAndTotals() {
+        val monthlyBiz = SubscriptionRenewalPricing.computeQuote(SubscriptionPlan.BUSINESS, "MONTHLY")
+        assertEquals(10_000L, monthlyBiz.finalAmountFcfa)
+
+        val quarterlyBiz = SubscriptionRenewalPricing.computeQuote(SubscriptionPlan.BUSINESS, "QUARTERLY")
+        assertEquals(27_000L, quarterlyBiz.finalAmountFcfa)
+
+        val annualEnterprise = SubscriptionRenewalPricing.computeQuote(SubscriptionPlan.ENTERPRISE, "ANNUAL")
+        assertEquals(240_000L, annualEnterprise.finalAmountFcfa)
+
+        assertTrue(GeniusPayUrlValidator.isAllowedBaseUrl("https://geniuspay.ci/api/v1/merchant"))
+        assertFalse(GeniusPayUrlValidator.isAllowedBaseUrl("http://geniuspay.ci/api/v1/merchant"))
+        assertFalse(GeniusPayUrlValidator.isAllowedBaseUrl("https://evil.example.com/api"))
+        assertTrue(GeniusPayUrlValidator.isSafeCheckoutUrl("https://pay.genius.ci/checkout/abc123"))
+        assertFalse(GeniusPayUrlValidator.isSafeCheckoutUrl("javascript:alert(1)"))
+
+        val placeholderCfg = GeniusPayRuntimeConfig(
+            apiKey = "GENIUSPAY_API_KEY_PLACEHOLDER",
+            apiSecret = "GENIUSPAY_API_SECRET_PLACEHOLDER",
+            mode = "live",
+            baseUrl = "https://geniuspay.ci/api/v1/merchant"
+        )
+        assertFalse(placeholderCfg.isConfigured)
+
+        val samplePayload = """{"event":"payment.completed","data":{"reference":"CHK_12345","status":"completed"}}"""
+        val sampleSecret = "test_webhook_secret_only"
+        val validSig = GeniusPayWebhookSignature.computeHmacSha256Hex(samplePayload, sampleSecret)
+        assertTrue(GeniusPayWebhookSignature.verifyHmacSha256(samplePayload, "sha256=$validSig", sampleSecret))
+        assertFalse(GeniusPayWebhookSignature.verifyHmacSha256(samplePayload, "sha256=deadbeef", sampleSecret))
+        assertEquals(SubscriptionPaymentStatus.COMPLETED, SubscriptionPaymentStatus.fromGeniusPayRaw("paid"))
+    }
+
+    @Test
+    fun adminProvisioningPolicy_blocksReleaseCredentialsAndRejectsUnauthorizedEmails() {
+        val releaseSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = false
+            override fun superAdminEmail(): String = "best2london@gmail.com"
+            override fun superAdminPassword(): String = "SyntheticStrongTest#2026!"
+        }
+        assertEquals(
+            AdminBootstrapResult.SkippedInProductionBuild,
+            AdminProvisioningManager(credentialSource = releaseSource).evaluatePreFlightPolicy()
+        )
+
+        val missingDebugCredsSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = true
+            override fun superAdminEmail(): String = ""
+            override fun superAdminPassword(): String = ""
+        }
+        assertEquals(
+            AdminBootstrapResult.SkippedMissingDebugCredentials,
+            AdminProvisioningManager(credentialSource = missingDebugCredsSource).evaluatePreFlightPolicy()
+        )
+
+        val unauthorizedEmailSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = true
+            override fun superAdminEmail(): String = "attacker@example.com"
+            override fun superAdminPassword(): String = "SyntheticStrongTest#2026!"
+        }
+        val unauthorizedResult = AdminProvisioningManager(credentialSource = unauthorizedEmailSource).evaluatePreFlightPolicy()
+        assertTrue(unauthorizedResult is AdminBootstrapResult.UnauthorizedEmailRejected)
+
+        val weakPasswordSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = true
+            override fun superAdminEmail(): String = "lebest2london@gmail.com"
+            override fun superAdminPassword(): String = "weak"
+        }
+        val weakResult = AdminProvisioningManager(credentialSource = weakPasswordSource).evaluatePreFlightPolicy()
+        assertTrue(weakResult is AdminBootstrapResult.Error)
+
+        val validPrimaryAdminSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = true
+            override fun superAdminEmail(): String = "lebest2london@gmail.com"
+            override fun superAdminPassword(): String = "SyntheticStrongTest#2026!"
+        }
+        assertNull(AdminProvisioningManager(credentialSource = validPrimaryAdminSource).evaluatePreFlightPolicy())
+
+        val validSecondaryAdminSource = object : AdminBootstrapCredentialSource {
+            override fun isClientBootstrapAllowed(): Boolean = true
+            override fun superAdminEmail(): String = "best2london@gmail.com"
+            override fun superAdminPassword(): String = "SyntheticStrongTest#2026!"
+        }
+        assertNull(AdminProvisioningManager(credentialSource = validSecondaryAdminSource).evaluatePreFlightPolicy())
+    }
 }
+

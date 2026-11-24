@@ -234,6 +234,45 @@ class PressingRepository(
         }
     }
 
+    /**
+     * Idempotently provisions the initial Super-Admin Firestore company document (`users/{uid}`)
+     * if missing, without exposing or handling any plaintext password.
+     * Returns `true` if newly created, `false` if already present.
+     */
+    suspend fun ensureSuperAdminCompanyProfile(userId: String, email: String): Result<Boolean> {
+        val path = "users/$userId"
+        return try {
+            requireUserId(userId)
+            if (!PlatformSuperAdminConfig.isPlatformSuperAdminEmail(email)) {
+                return Result.failure(SecurityException("Adresse e-mail non autorisée pour le profil Super-Admin."))
+            }
+            val docRef = userDoc(userId)
+            val existingSnap = docRef.get().await()
+            if (existingSnap.exists()) {
+                return Result.success(false)
+            }
+            val initialConfig = CompanyConfig(
+                userId = userId,
+                companyName = "Gestion Pro Africa — Siège",
+                legalName = "SAS",
+                description = "Compte Super-Admin Plateforme Pressing Pro",
+                email = email.trim().lowercase(),
+                subscriptionPlan = SubscriptionPlan.ENTERPRISE.name,
+                subscriptionBilling = "ANNUAL",
+                subscriptionStatus = "ACTIVE",
+                setupStep = 10L,
+                setupCompleted = true
+            )
+            docRef.set(initialConfig.toCreateMap(userId)).await()
+            Result.success(true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            Result.failure(e)
+        }
+    }
+
     suspend fun seedStarterServicesIfEmpty(userId: String, starterList: List<ServiceItem>): Result<Unit> {
         val path = "users/$userId/services"
         return try {
@@ -1008,6 +1047,70 @@ class PressingRepository(
                     "reviewedBy" to reviewedBy.trim().take(100),
                     "reviewNote" to reviewNote.trim().take(240),
                     "executedAtMillis" to executedAtMillis,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    // --- GENIUSPAY SUBSCRIPTION RENEWAL PAYMENTS ---
+
+    fun observeSubscriptionPayments(userId: String): Flow<List<SubscriptionPaymentRecord>> = flow {
+        requireUserId(userId)
+        val path = "users/$userId/subscription_payments"
+        emitAll(
+            userDoc(userId).collection("subscription_payments")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(SubscriptionPaymentRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                        .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                        .take(30)
+                }
+                .logAndRethrow(userId, OperationType.LIST, path)
+        )
+    }
+
+    suspend fun saveSubscriptionPayment(
+        userId: String,
+        record: SubscriptionPaymentRecord
+    ): Result<String> {
+        val safeDocId = record.reference
+            .replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+            .take(80)
+            .ifBlank { "gp_${System.currentTimeMillis()}" }
+        val path = "users/$userId/subscription_payments/$safeDocId"
+        return try {
+            requireUserId(userId)
+            userDoc(userId).collection("subscription_payments").document(safeDocId)
+                .set(record.toCreateMap(userId)).await()
+            Result.success(safeDocId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateSubscriptionPaymentStatus(
+        userId: String,
+        reference: String,
+        status: SubscriptionPaymentStatus
+    ): Result<Unit> {
+        val safeDocId = reference.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(80)
+        val path = "users/$userId/subscription_payments/$safeDocId"
+        return try {
+            requireUserId(userId)
+            require(safeDocId.isNotBlank())
+            userDoc(userId).collection("subscription_payments").document(safeDocId).update(
+                mapOf(
+                    "status" to status.name,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()

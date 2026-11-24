@@ -99,10 +99,22 @@ import com.example.data.SubscriptionPlan
 import com.example.data.SupportAccessSession
 import com.example.data.TrackingTokenGenerator
 import com.example.data.WorkspaceRole
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CreditCard
+import androidx.compose.material.icons.rounded.OpenInNew
+import com.example.data.GeniusPayRuntimeConfig
+import com.example.data.GeniusPayUrlValidator
+import com.example.data.PlatformSuperAdminConfig
+import com.example.data.SubscriptionPaymentRecord
+import com.example.data.SubscriptionPaymentStatus
+import com.example.data.SubscriptionRenewalPricing
 import com.example.ui.components.GestionProBrandHeader
 import com.example.ui.components.HorizontalOrderTimeline
 import com.example.ui.components.OrderStatusChip
+import com.example.ui.viewmodel.GeniusPayUiState
 import com.example.ui.components.PaymentStatusChip
 import com.example.ui.components.QrBarcodeScannerDialog
 import com.example.ui.components.RoleBadgeChip
@@ -599,6 +611,12 @@ fun SaasAdminScreen(
     transactions: List<AccountingEntry>,
     activeSupportSession: com.example.data.SupportAccessSession? = null,
     isSuperAdmin: Boolean = false,
+    geniusPayState: GeniusPayUiState = GeniusPayUiState.Idle,
+    geniusPayConfig: GeniusPayRuntimeConfig = GeniusPayRuntimeConfig(),
+    subscriptionPayments: List<SubscriptionPaymentRecord> = emptyList(),
+    onPaySubscriptionOnline: (SubscriptionPlan, String) -> Unit = { _, _ -> },
+    onVerifySubscriptionPayment: (String, SubscriptionPlan, String, Long) -> Unit = { _, _, _, _ -> },
+    onDismissGeniusPayState: () -> Unit = {},
     onStartSupportSession: (String, String, Int) -> Unit = { _, _, _ -> },
     onRevokeSupportSession: () -> Unit = {},
     onUpdateCompany: (CompanyConfig) -> Unit,
@@ -611,6 +629,9 @@ fun SaasAdminScreen(
     var supportTicketId by remember { mutableStateOf("SUP-2026-01") }
     var supportReason by remember { mutableStateOf("") }
     var supportDurationMin by remember { mutableIntStateOf(30) }
+    val renewalQuote = remember(selectedPlan, selectedBilling) {
+        SubscriptionRenewalPricing.computeQuote(selectedPlan, selectedBilling)
+    }
 
     Scaffold(
         topBar = {
@@ -643,6 +664,21 @@ fun SaasAdminScreen(
                     GestionProBrandHeader(compact = true)
                     Text("Espace Tenant : ${company.companyName}", color = Color.White, fontWeight = FontWeight.Bold)
                     Text("Statut SaaS : ${company.subscriptionStatus} · Formule ${selectedPlan.labelFr}", color = AfricaGold, style = MaterialTheme.typography.bodySmall)
+                    if (isSuperAdmin) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = AfricaGold.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, AfricaGold)
+                        ) {
+                            Text(
+                                text = "Super-Admin Plateforme : ${PlatformSuperAdminConfig.SUPER_ADMIN_EMAIL}",
+                                color = AfricaGold,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                     Text("${company.agencies.size} entité(s)/agence(s) · ${clients.size} clients · ${orders.size} commandes · ${transactions.size} écritures", color = Color(0xFFCCD9FF), style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -832,22 +868,327 @@ fun SaasAdminScreen(
             }
 
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("MONTHLY" to "Mensuel", "QUARTERLY" to "Trimestriel", "ANNUAL" to "Annuel").forEach { (c, l) ->
+                listOf(
+                    "MONTHLY" to "Mensuel",
+                    "QUARTERLY" to "Trimestriel (-10%)",
+                    "ANNUAL" to "Annuel (-20%)"
+                ).forEach { (c, l) ->
                     FilterChip(selected = selectedBilling == c, onClick = { selectedBilling = c }, label = { Text(l) })
                 }
             }
 
-            Button(
-                onClick = {
-                    onUpdateCompany(company.copy(subscriptionPlan = selectedPlan.name, subscriptionBilling = selectedBilling))
-                },
+            // GeniusPay Online Subscription Renewal Payment Card
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .testTag("saas_update_plan_button"),
-                colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue)
+                    .testTag("saas_geniuspay_payment_card"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.5.dp, RoyalBlue.copy(alpha = 0.45f))
             ) {
-                Text("Mettre à jour la formule d'abonnement")
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Rounded.CreditCard, contentDescription = null, tint = RoyalBlue)
+                            Text(
+                                text = "Réabonnement en ligne GeniusPay",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MidnightNavy
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (geniusPayConfig.isConfigured) EmeraldContainer else AmberContainer
+                        ) {
+                            Text(
+                                text = if (geniusPayConfig.isConfigured) {
+                                    "Mode ${geniusPayConfig.normalizedMode.uppercase()}"
+                                } else {
+                                    "Clés à configurer"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (geniusPayConfig.isConfigured) Color(0xFF065F46) else Color(0xFF92400E),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Wave · Orange Money · MTN MoMo · Moov Money · Carte bancaire via GeniusPay Côte d'Ivoire.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = PastelBlueTint,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${renewalQuote.plan.labelFr} · ${renewalQuote.periodLabelFr}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MidnightNavy
+                                )
+                                if (renewalQuote.discountPercent > 0) {
+                                    Text(
+                                        text = "Économie ${renewalQuote.discountPercent}% incluse",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = EmeraldSuccess,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = formatMoney(renewalQuote.finalAmountFcfa, "FCFA"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = RoyalBlue
+                            )
+                        }
+                    }
+
+                    when (val gp = geniusPayState) {
+                        is GeniusPayUiState.CheckoutReady -> {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = EmeraldContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Session GeniusPay prête · Réf ${gp.session.reference}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (GeniusPayUrlValidator.isSafeCheckoutUrl(gp.session.checkoutUrl)) {
+                                                runCatching {
+                                                    context.startActivity(
+                                                        Intent(Intent.ACTION_VIEW, Uri.parse(gp.session.checkoutUrl))
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MidnightNavy),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .testTag("saas_geniuspay_open_checkout_button")
+                                    ) {
+                                        Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Ouvrir la page de paiement GeniusPay", fontWeight = FontWeight.Bold)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            onVerifySubscriptionPayment(
+                                                gp.session.reference,
+                                                gp.session.plan,
+                                                gp.session.billingCycle,
+                                                gp.session.amountFcfa
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .testTag("saas_geniuspay_verify_button")
+                                    ) {
+                                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Vérifier la confirmation GeniusPay", fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+
+                        is GeniusPayUiState.Paid -> {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = EmeraldContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = EmeraldSuccess)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Réabonnement ${gp.plan.labelFr} payé & activé",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF065F46)
+                                        )
+                                        Text(
+                                            text = "Réf. ${gp.reference} · ${formatMoney(gp.amountFcfa, "FCFA")}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF065F46)
+                                        )
+                                    }
+                                    TextButton(onClick = onDismissGeniusPayState) { Text("OK") }
+                                }
+                            }
+                        }
+
+                        is GeniusPayUiState.Error -> {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CrimsonContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = gp.message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF991B1B),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        GeniusPayUiState.CreatingCheckout,
+                        is GeniusPayUiState.Verifying,
+                        GeniusPayUiState.Idle -> Unit
+                    }
+
+                    val isPaymentBusy = geniusPayState is GeniusPayUiState.CreatingCheckout ||
+                        geniusPayState is GeniusPayUiState.Verifying
+
+                    Button(
+                        onClick = { onPaySubscriptionOnline(selectedPlan, selectedBilling) },
+                        enabled = !isPaymentBusy,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalBlue),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 50.dp)
+                            .testTag("saas_geniuspay_checkout_button")
+                    ) {
+                        if (isPaymentBusy) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (geniusPayState is GeniusPayUiState.Verifying) {
+                                    "Vérification GeniusPay..."
+                                } else {
+                                    "Initialisation GeniusPay..."
+                                },
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            Icon(Icons.Rounded.CreditCard, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Payer ${formatMoney(renewalQuote.finalAmountFcfa, "FCFA")} via GeniusPay",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (isSuperAdmin) {
+                        OutlinedButton(
+                            onClick = {
+                                onUpdateCompany(
+                                    company.copy(
+                                        subscriptionPlan = selectedPlan.name,
+                                        subscriptionBilling = selectedBilling,
+                                        subscriptionStatus = "ACTIVE"
+                                    )
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("saas_update_plan_button")
+                        ) {
+                            Text("Activation manuelle Super-Admin (sans facturation)")
+                        }
+                    }
+
+                    if (subscriptionPayments.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text(
+                            text = "Historique des réabonnements GeniusPay (${subscriptionPayments.size})",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MidnightNavy
+                        )
+                        subscriptionPayments.take(5).forEach { pay ->
+                            val st = pay.statusEnum()
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = PastelBlueTint,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${pay.plan} · ${pay.reference}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MidnightNavy
+                                        )
+                                        Text(
+                                            text = "${formatMoney(pay.amountFcfa, "FCFA")} · ${st.labelFr}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (st == SubscriptionPaymentStatus.PENDING) {
+                                        TextButton(
+                                            onClick = {
+                                                onVerifySubscriptionPayment(
+                                                    pay.reference,
+                                                    SubscriptionPlan.fromRaw(pay.plan),
+                                                    pay.billingCycle,
+                                                    pay.amountFcfa
+                                                )
+                                            }
+                                        ) {
+                                            Text("Vérifier", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // 6-Role Multi-Dashboard Architecture & Security Overview Card

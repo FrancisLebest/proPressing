@@ -15,14 +15,17 @@
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const db = admin.firestore();
+const FIRESTORE_DATABASE_ID =
+  process.env.FIRESTORE_DATABASE_ID ||
+  "ai-studio-android-pressing-bfcbafdf-ef9f-414c-b2a1-dde862b44f8e";
+const db = getFirestore(admin.app(), FIRESTORE_DATABASE_ID);
 const auth = admin.auth();
-const FieldValue = admin.firestore.FieldValue;
 
 function requireAuth(request) {
   if (!request.auth || !request.auth.uid) {
@@ -291,4 +294,353 @@ exports.completeRegistration = onCall(async (request) => {
     { merge: true }
   );
   return { completed: true };
+});
+
+// ============================================================================
+// SUPER-ADMIN BOOTSTRAP (Email + Password) & GENIUSPAY SUBSCRIPTION RENEWALS
+// ============================================================================
+
+const { onRequest } = require("firebase-functions/v2/https");
+const crypto = require("crypto");
+
+const PLATFORM_SUPER_ADMIN_EMAILS = new Set(
+  String(
+    process.env.SUPER_ADMIN_EMAILS ||
+      process.env.SUPER_ADMIN_EMAIL ||
+      "lebest2london@gmail.com,best2london@gmail.com"
+  )
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+const ALLOWED_GENIUSPAY_HOSTS = new Set([
+  "geniuspay.ci",
+  "pay.genius.ci",
+  "api.geniuspay.ci",
+]);
+
+const PLAN_MONTHLY_FCFA = {
+  STARTER: 5000,
+  BUSINESS: 10000,
+  ENTERPRISE: 25000,
+};
+
+function computeSubscriptionAmountFcfa(plan, billingCycle) {
+  const safePlan = PLAN_MONTHLY_FCFA[plan] ? plan : "BUSINESS";
+  const monthly = PLAN_MONTHLY_FCFA[safePlan];
+  const cycle = String(billingCycle || "MONTHLY").toUpperCase();
+  if (cycle === "QUARTERLY") {
+    return Math.round(monthly * 3 * 0.9);
+  }
+  if (cycle === "ANNUAL") {
+    return Math.round(monthly * 12 * 0.8);
+  }
+  return monthly;
+}
+
+function getValidatedGeniusPayBaseUrl() {
+  const raw = String(
+    process.env.GENIUSPAY_BASE_URL || "https://geniuspay.ci/api/v1/merchant"
+  ).trim().replace(/\/+$/, "");
+  const parsed = new URL(raw);
+  if (parsed.protocol !== "https:" || !ALLOWED_GENIUSPAY_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new HttpsError("failed-precondition", "URL de base GeniusPay non autorisée.");
+  }
+  return raw;
+}
+
+function verifyGeniusPayWebhookSignature(rawBodyBuffer, signatureHeader, secret) {
+  if (!rawBodyBuffer || !signatureHeader || !secret) return false;
+  const cleaned = String(signatureHeader)
+    .trim()
+    .replace(/^sha256=/i, "")
+    .replace(/^v1=/i, "")
+    .toLowerCase();
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBodyBuffer)
+    .digest("hex")
+    .toLowerCase();
+  const a = Buffer.from(cleaned, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * 11. bootstrapSuperAdmin — provisions or synchronizes a Platform Super-Admin account
+ * (`lebest2london@gmail.com` / `best2london@gmail.com`) with Firebase Auth Email/Password + custom claims (`SUPER_ADMIN`).
+ * Reads initial password strictly from server-side `process.env.SUPER_ADMIN_INITIAL_PASSWORD`.
+ */
+exports.bootstrapSuperAdmin = onCall(async (request) => {
+  const callerUid = requireAuth(request);
+  const callerEmail = String(request.auth.token.email || "").trim().toLowerCase();
+  if (!PLATFORM_SUPER_ADMIN_EMAILS.has(callerEmail)) {
+    throw new HttpsError("permission-denied", "Réservé au Super-Admin de la plateforme.");
+  }
+  const requestedEmail = String(request.data?.email || callerEmail).trim().toLowerCase();
+  if (!PLATFORM_SUPER_ADMIN_EMAILS.has(requestedEmail)) {
+    throw new HttpsError("permission-denied", "Adresse e-mail non autorisée comme Super-Admin.");
+  }
+
+  let targetUser;
+  try {
+    targetUser = await auth.getUserByEmail(requestedEmail);
+  } catch (err) {
+    const initialPassword = process.env.SUPER_ADMIN_INITIAL_PASSWORD || "";
+    if (initialPassword.length < 8) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Définissez SUPER_ADMIN_INITIAL_PASSWORD dans Firebase Functions Secrets pour créer le compte e-mail/mot de passe."
+      );
+    }
+    targetUser = await auth.createUser({
+      email: requestedEmail,
+      password: initialPassword,
+      displayName: "Super-Admin Gestion Pro Africa",
+      emailVerified: true,
+    });
+  }
+
+  await auth.setCustomUserClaims(targetUser.uid, {
+    role: "DIRECTEUR",
+    platformRole: "SUPER_ADMIN",
+    superAdmin: true,
+  });
+
+  await db.collection("platformRoles").doc(targetUser.uid).set(
+    {
+      uid: targetUser.uid,
+      email: requestedEmail,
+      role: "SUPER_ADMIN",
+      status: "ACTIVE",
+      updatedBy: callerUid,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return {
+    uid: targetUser.uid,
+    email: requestedEmail,
+    role: "SUPER_ADMIN",
+    status: "ACTIVE",
+  };
+});
+
+/**
+ * 12. createGeniusPaySubscriptionCheckout — server-side GeniusPay checkout initializer.
+ * Keeps GENIUSPAY_API_KEY and GENIUSPAY_API_SECRET strictly on the server via process.env.
+ */
+exports.createGeniusPaySubscriptionCheckout = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const apiKey = process.env.GENIUSPAY_API_KEY || "";
+  const apiSecret = process.env.GENIUSPAY_API_SECRET || "";
+  const mode = String(process.env.GENIUSPAY_MODE || "live").toLowerCase();
+  if (!apiKey || !apiSecret || apiKey.includes("PLACEHOLDER") || apiSecret.includes("PLACEHOLDER")) {
+    throw new HttpsError("failed-precondition", "Clés GeniusPay manquantes dans Firebase Functions Secrets.");
+  }
+
+  const baseUrl = getValidatedGeniusPayBaseUrl();
+  const plan = String(request.data?.plan || "BUSINESS").toUpperCase();
+  const billingCycle = String(request.data?.billingCycle || "MONTHLY").toUpperCase();
+  const amountFcfa = computeSubscriptionAmountFcfa(plan, billingCycle);
+  const companySnap = await db.collection("users").doc(uid).get();
+  const companyData = companySnap.exists ? companySnap.data() : {};
+
+  const response = await fetch(`${baseUrl}/payments`, {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKey,
+      "X-API-Secret": apiSecret,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      amount: amountFcfa,
+      currency: "XOF",
+      description: `Réabonnement Pressing Pro ${plan} (${billingCycle})`,
+      customer: {
+        name: String(companyData.companyName || request.auth.token.name || "Pressing Pro").slice(0, 100),
+        email: String(request.auth.token.email || companyData.email || "").slice(0, 120),
+        phone: String(companyData.phone || "").slice(0, 30),
+      },
+      metadata: {
+        organization_uid: uid,
+        plan,
+        billing_cycle: billingCycle,
+        mode,
+      },
+    }),
+  });
+
+  const payload = await response.json();
+  const data = payload?.data || payload || {};
+  const reference = String(data.reference || data.id || "").trim();
+  const checkoutUrl = String(data.checkout_url || data.payment_url || "").trim();
+
+  if (!response.ok || !reference || !checkoutUrl.startsWith("https://")) {
+    throw new HttpsError("internal", payload?.message || "Erreur lors de l'initialisation GeniusPay.");
+  }
+
+  await db
+    .collection("users")
+    .doc(uid)
+    .collection("subscription_payments")
+    .doc(reference.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80))
+    .set({
+      userId: uid,
+      reference,
+      provider: "GENIUSPAY",
+      mode: mode === "test" ? "test" : "live",
+      plan: PLAN_MONTHLY_FCFA[plan] ? plan : "BUSINESS",
+      billingCycle: ["MONTHLY", "QUARTERLY", "ANNUAL"].includes(billingCycle) ? billingCycle : "MONTHLY",
+      amountFcfa,
+      currency: "XOF",
+      status: "PENDING",
+      checkoutUrl,
+      customerEmail: String(request.auth.token.email || companyData.email || "").slice(0, 120),
+      customerPhone: String(companyData.phone || "").slice(0, 30),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+  return { reference, checkoutUrl, amountFcfa, currency: "XOF", mode, status: "PENDING" };
+});
+
+/**
+ * 13. verifyGeniusPaySubscriptionPayment — server-side transaction verification & subscription activation.
+ */
+exports.verifyGeniusPaySubscriptionPayment = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const reference = String(request.data?.reference || "").trim();
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(reference)) {
+    throw new HttpsError("invalid-argument", "Référence GeniusPay invalide.");
+  }
+  const apiKey = process.env.GENIUSPAY_API_KEY || "";
+  const apiSecret = process.env.GENIUSPAY_API_SECRET || "";
+  if (!apiKey || !apiSecret) {
+    throw new HttpsError("failed-precondition", "Clés GeniusPay non configurées sur le serveur.");
+  }
+
+  const baseUrl = getValidatedGeniusPayBaseUrl();
+  const response = await fetch(`${baseUrl}/payments/${encodeURIComponent(reference)}`, {
+    method: "GET",
+    headers: {
+      "X-API-Key": apiKey,
+      "X-API-Secret": apiSecret,
+      "Accept": "application/json",
+    },
+  });
+  const payload = await response.json();
+  const data = payload?.data || payload || {};
+  const rawStatus = String(data.status || "pending").toLowerCase();
+
+  let normalizedStatus = "PENDING";
+  if (["completed", "paid", "succeeded", "success", "approved"].includes(rawStatus)) {
+    normalizedStatus = "COMPLETED";
+  } else if (["failed", "declined", "error", "expired"].includes(rawStatus)) {
+    normalizedStatus = "FAILED";
+  } else if (["cancelled", "canceled", "aborted"].includes(rawStatus)) {
+    normalizedStatus = "CANCELLED";
+  }
+
+  const payDocId = reference.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const payRef = db.collection("users").doc(uid).collection("subscription_payments").doc(payDocId);
+  const paySnap = await payRef.get();
+
+  if (paySnap.exists && normalizedStatus !== "PENDING") {
+    await payRef.update({ status: normalizedStatus, updatedAt: FieldValue.serverTimestamp() });
+    if (normalizedStatus === "COMPLETED") {
+      const pData = paySnap.data();
+      await db.collection("users").doc(uid).set(
+        {
+          subscriptionPlan: pData.plan || "BUSINESS",
+          subscriptionBilling: pData.billingCycle || "MONTHLY",
+          subscriptionStatus: "ACTIVE",
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  return { reference, status: normalizedStatus };
+});
+
+/**
+ * 14. geniusPayWebhook — HTTPS webhook endpoint verifying HMAC-SHA256 with GENIUSPAY_WEBHOOK_SECRET.
+ */
+exports.geniusPayWebhook = onRequest(async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
+  }
+  const webhookSecret = process.env.GENIUSPAY_WEBHOOK_SECRET || "";
+  if (!webhookSecret || webhookSecret.includes("PLACEHOLDER")) {
+    res.status(503).json({ error: "Webhook secret not configured" });
+    return;
+  }
+
+  const signature =
+    req.get("X-GeniusPay-Signature") ||
+    req.get("X-Webhook-Signature") ||
+    req.get("X-Signature") ||
+    "";
+  const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body || {}), "utf8");
+  if (!verifyGeniusPayWebhookSignature(rawBody, signature, webhookSecret)) {
+    res.status(401).json({ error: "Invalid webhook signature" });
+    return;
+  }
+
+  const event = req.body || {};
+  const data = event.data || event;
+  const reference = String(data.reference || data.id || "").trim();
+  const metadata = data.metadata || {};
+  const uid = String(metadata.organization_uid || "").trim();
+  const eventType = String(event.event || data.status || "").toLowerCase();
+
+  if (!reference || !uid) {
+    res.status(200).json({ received: true, ignored: true });
+    return;
+  }
+
+  const isCompleted =
+    eventType.includes("completed") ||
+    eventType.includes("paid") ||
+    eventType.includes("succeeded");
+  const isFailed = eventType.includes("failed") || eventType.includes("declined");
+  const isCancelled = eventType.includes("cancel");
+
+  const nextStatus = isCompleted
+    ? "COMPLETED"
+    : isFailed
+      ? "FAILED"
+      : isCancelled
+        ? "CANCELLED"
+        : "PENDING";
+
+  const payDocId = reference.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  const payRef = db.collection("users").doc(uid).collection("subscription_payments").doc(payDocId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(payRef);
+    if (!snap.exists || snap.data().status === "COMPLETED") return;
+    if (nextStatus !== "PENDING") {
+      tx.update(payRef, { status: nextStatus, updatedAt: FieldValue.serverTimestamp() });
+      if (nextStatus === "COMPLETED") {
+        tx.set(
+          db.collection("users").doc(uid),
+          {
+            subscriptionPlan: snap.data().plan || metadata.plan || "BUSINESS",
+            subscriptionBilling: snap.data().billingCycle || metadata.billing_cycle || "MONTHLY",
+            subscriptionStatus: "ACTIVE",
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    }
+  });
+
+  res.status(200).json({ received: true, reference, status: nextStatus });
 });
