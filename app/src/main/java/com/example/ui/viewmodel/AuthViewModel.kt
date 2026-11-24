@@ -235,6 +235,7 @@ class AuthViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
             val result = authRepository.signInWithEmailCredential(email, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
@@ -267,6 +268,7 @@ class AuthViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
             val result = authRepository.registerWithEmailPassword(fullName, email, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
@@ -302,6 +304,7 @@ class AuthViewModel(
     fun signInWithPhone(dialCode: String, localNumber: String, password: String) {
         if (_uiState.value.isLoading) return
         if (shortCircuitIfEmailProviderDisabled()) return
+        if (checkRateLimitBlocked()) return
         AuthInputValidator.validatePhone(dialCode, localNumber)?.let { err ->
             _uiState.update { it.copy(errorMessage = err, infoMessage = null) }
             return
@@ -314,6 +317,7 @@ class AuthViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
             val result = authRepository.signInWithPhonePassword(dialCode, localNumber, password)
             result.onSuccess { profile ->
+                rateLimiter.recordSuccess()
                 _manualProfileOverride.value = profile
                 _uiState.update { it.copy(isLoading = false, isEmailProviderDisabled = false, errorMessage = null) }
             }.onFailure { err ->
