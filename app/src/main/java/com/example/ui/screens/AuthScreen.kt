@@ -57,8 +57,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -482,7 +480,6 @@ private fun AuthActionCard(
     var confirmPasswordInput by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var confirmPasswordVisible by rememberSaveable { mutableStateOf(false) }
-    var rememberMe by rememberSaveable { mutableStateOf(true) }
     var acceptedTerms by rememberSaveable { mutableStateOf(true) }
     var dialDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -858,22 +855,6 @@ private fun AuthActionCard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { rememberMe = !rememberMe }
-                                ) {
-                                    Checkbox(
-                                        checked = rememberMe,
-                                        onCheckedChange = { rememberMe = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = RoyalBlue)
-                                    )
-                                    Text(
-                                        text = "Se souvenir de moi",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MidnightNavy,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
                                 TextButton(
                                     onClick = { onForgotPassword(emailInput) },
                                     modifier = Modifier
@@ -1134,22 +1115,6 @@ private fun AuthActionCard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { rememberMe = !rememberMe }
-                                ) {
-                                    Checkbox(
-                                        checked = rememberMe,
-                                        onCheckedChange = { rememberMe = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = RoyalBlue)
-                                    )
-                                    Text(
-                                        text = "Se souvenir de moi",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MidnightNavy,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
                                 TextButton(
                                     onClick = { onForgotPassword(emailInput) },
                                     modifier = Modifier
